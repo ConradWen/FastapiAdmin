@@ -78,7 +78,8 @@ async function handleUnauthorized(method: Method, rawData: any): Promise<unknown
       const refreshToken = userStore.getRefreshToken()
       if (!refreshToken)
         throw new Error('[认证失效]：请重新登录')
-      const res = await AuthAPI.refreshToken({ refresh_token: refreshToken })
+      // 后端要 JSON 字符串 body（Body(str)），AuthAPI.refreshToken 内部已 JSON.stringify
+      const res = await AuthAPI.refreshToken(refreshToken)
       if (!res?.access_token)
         throw new Error('[认证失效]：登录已过期')
       userStore.setAccessToken(res.access_token)

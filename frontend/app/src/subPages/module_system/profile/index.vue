@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { UploadMethod } from '@wot-ui/ui/components/wd-upload/types'
 import type { UserInfo, UserProfileForm } from '@/api/module_system/user'
 import { onLoad } from '@dcloudio/uni-app'
 import { computed, reactive, ref } from 'vue'
@@ -22,9 +23,39 @@ const loading = ref(false)
 const saving = ref(false)
 const userProfile = ref<UserInfo>()
 
-/** 头像上传：后端通用文件上传（upload_type=avatar），字段名 file */
-const uploadAvatarAction = `${import.meta.env.VITE_API_BASE_URL || ''}${import.meta.env.VITE_APP_BASE_API || ''}/file/upload?upload_type=avatar`
-const uploadHeader = { Authorization: `Bearer ${userStore.getAccessToken() || ''}` }
+/**
+ * 头像上传：交给统一 http 层处理（alova 适配器 `requestType: 'upload'` → uni.uploadFile）。
+ *
+ * 之前由页面自己拼 `VITE_API_BASE_URL + VITE_APP_BASE_API + /file/upload` 并手工设置
+ * `Authorization`，有两个问题：
+ * 1. 路径缺 `/common` 前缀，后端真实路径是 `/api/v1/common/file/upload`（404）；
+ * 2. 绕过 http 层，拿不到统一的令牌注入与错误处理。
+ * 现在通过 `wd-upload` 的 `upload-method` 钩子走 `UserAPI.uploadCurrentUserAvatar`，
+ * 请求头由 http 层 `beforeRequest` 注入。
+ */
+const uploadAvatar: UploadMethod = async (uploadFile, formData, options) => {
+  try {
+    const res = await UserAPI.uploadCurrentUserAvatar({
+      filePath: uploadFile.url,
+      name: options.name || 'file',
+    })
+    // 与 wd-upload 默认上传保持一致：statusCode 命中 successStatus（默认 200）才算成功
+    const successStatus = options.statusCode ?? 200
+    const isSuccess = Array.isArray(successStatus)
+      ? successStatus.includes(res.statusCode)
+      : res.statusCode === successStatus
+
+    if (isSuccess) {
+      options.onSuccess(res, uploadFile, formData)
+    }
+    else {
+      options.onError({ ...res, errMsg: res.errMsg || `HTTP ${res.statusCode}` }, uploadFile, formData)
+    }
+  }
+  catch (error) {
+    options.onError({ errMsg: (error as Error)?.message || 'upload failed' } as UniApp.GeneralCallbackResult, uploadFile, formData)
+  }
+}
 const avatarFileList = ref<{ url: string }[]>([])
 
 const genderText = computed(() => {
@@ -145,8 +176,7 @@ onLoad(() => {
       <view class="mx-3 mb-3 flex flex-col items-center gap-2 py-4">
         <wd-upload
           v-model:file-list="avatarFileList"
-          :action="uploadAvatarAction"
-          :header="uploadHeader"
+          :upload-method="uploadAvatar"
           :limit="1"
           accept="image"
           :max-size="5242880"
