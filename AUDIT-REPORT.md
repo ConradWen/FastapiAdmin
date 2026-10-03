@@ -201,3 +201,37 @@
 - 配置备份：`docker-compose.yaml.bak-*`、`nginx.conf.bak-*`、`.env.bak-*`
 - 静态成品备份：`backups/{web,app-h5}-<时间戳>`（每类保留 5 份）
 - 种子账号新口令：服务器 `/root/.fa-seed-passwords`（600，登录后请修改并删除）
+
+## 10. 收尾状态
+
+**代码与部署**
+
+- 本轮共 12 个提交（`ce940119` … 本报告提交），已推送 GitHub `master/dev` 与 gitee `gitee/dev`。
+- 线上版本：后端含 t10/t11/t13/t15/t16/t19 全部修复；Web 含 t17/t18 错误文案修复；App 为 t9 修复版。
+- 部署方式：本机构建成品 → 服务器只接收镜像与静态产物（服务器无源码、无构建），细节见 `DEPLOYMENT.md`。
+
+**最终验证（部署后新跑）**
+
+| 项 | 结果 |
+| --- | --- |
+| 容器 | backend / nginx / redis / mysql 全部 healthy；健康检查 exit 0 |
+| 四端（公网） | `/`、`/web/`、`/app/`、`/api/v1/monitor/health/check` 均 200 |
+| 接口文档 | 公网 403；仅内网白名单可访问（本机 200） |
+| Host 校验 | 正确域名 200；`localhost` 400；伪造域名 400（`ALLOW_LOCALHOST_HOSTS=false`） |
+| 数据面暴露 | 3306/6379/8001 无公网监听（宿主 `ss` + 服务器自连双向确认） |
+| 业务语义 | 验证码过期 → 400 且保留业务文案；无令牌 → 401；内部故障 → 5xx + 通用文案（细节仅日志） |
+| 密钥 | 旧公开默认密钥伪造令牌被拒；`SECRET_KEY`/`DATA_ENCRYPTION_KEY` 已注入并轮换 |
+| 类型检查 | basedpyright 全量 0 errors（`backend/pyrightconfig.json`）；ruff 全绿 |
+| 测试 | 后端 pytest 97 passed；Web vitest 41 passed |
+| 巡检 | `fa-health-check.timer` active，日志无 ALERT |
+
+**团队**
+
+审计团队（7 名成员，t1–t19）已归档；本报告与 7 份分报告为全部交付物，残余项见 §9.2。
+
+**收尾后仍需人工处理（不阻塞上线）**
+
+1. 轮换 `OPENAI_API_KEY` 与旧数据库口令（已进历史/镜像层，按已泄露处理）。
+2. 审计报告内含旧密钥的少量特征（前 4 字符与长度）用于佐证；若仓库将转为公开，建议先按上述轮换再考虑是否脱敏。
+3. §9.2 中的产品/架构决策项（会话失效、数据权限注入、多租户规格、i18n、移动端 `ContentType`）。
+
