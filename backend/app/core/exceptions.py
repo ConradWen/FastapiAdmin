@@ -38,17 +38,72 @@ def require_superadmin(func):
     return wrapper
 
 
+# starlette 新版本把 HTTP_422_UNPROCESSABLE_ENTITY 标为弃用，这里取新常量并兼容旧版本，
+# 避免模块导入期就打 DeprecationWarning
+_HTTP_422: int = getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", 422)
+
+# 业务错误码 → HTTP 状态码。只映射语义明确的码；其余业务异常统一按 _DEFAULT_BUSINESS_STATUS 返回。
+# 说明：历史上 CustomException 的 status_code 默认 500，导致「验证码过期」「参数校验失败」这类
+# 客户端错误也返回 500 —— 前端无法区分「我错了」与「服务器坏了」，监控/告警也被污染。
+_CODE_TO_HTTP_STATUS: dict[int, int] = {
+    RET.BAD_REQUEST.code: status.HTTP_400_BAD_REQUEST,
+    RET.UNAUTHORIZED.code: status.HTTP_401_UNAUTHORIZED,
+    RET.FORBIDDEN.code: status.HTTP_403_FORBIDDEN,
+    RET.NOT_FOUND.code: status.HTTP_404_NOT_FOUND,
+    RET.CONFLICT.code: status.HTTP_409_CONFLICT,
+    RET.UNPROCESSABLE_ENTITY.code: _HTTP_422,
+    RET.TOO_MANY_REQUESTS.code: status.HTTP_429_TOO_MANY_REQUESTS,
+    RET.SERVICE_UNAVAILABLE.code: status.HTTP_503_SERVICE_UNAVAILABLE,
+    RET.DATAEXIST.code: status.HTTP_409_CONFLICT,
+    RET.PARAMERR.code: status.HTTP_400_BAD_REQUEST,
+    RET.TIMEOUT.code: status.HTTP_504_GATEWAY_TIMEOUT,
+    RET.RATE_LIMIT_EXCEEDED.code: status.HTTP_429_TOO_MANY_REQUESTS,
+    # 认证类业务码（对应前端 ResultEnum）
+    RET.INVALID_TOKEN.code: status.HTTP_401_UNAUTHORIZED,
+    RET.EXPIRED_TOKEN.code: status.HTTP_401_UNAUTHORIZED,
+    RET.INVALID_CREDENTIALS.code: status.HTTP_401_UNAUTHORIZED,
+    RET.TOKEN_EXPIRED.code: status.HTTP_401_UNAUTHORIZED,
+    RET.NO_PERMISSION.code: status.HTTP_403_FORBIDDEN,
+    # 显式声明为服务端错误的码（供内部包装器使用，如 CRUD「xx失败」兜底）
+    RET.SERVERERR.code: status.HTTP_500_INTERNAL_SERVER_ERROR,
+}
+
+# 未映射业务码的默认状态：业务异常按「客户端请求错误」处理（而不是 500）
+_DEFAULT_BUSINESS_STATUS: int = status.HTTP_400_BAD_REQUEST
+
+
+def resolve_http_status(code: int | None) -> int:
+    """把业务错误码解析为 HTTP 状态码。
+
+    参数:
+    - code (int | None): 业务错误码。
+
+    返回:
+    - int: 对应的 HTTP 状态码；未映射的码返回 _DEFAULT_BUSINESS_STATUS。
+    """
+    if code is None:
+        return _DEFAULT_BUSINESS_STATUS
+    return _CODE_TO_HTTP_STATUS.get(int(code), _DEFAULT_BUSINESS_STATUS)
+
+
 class CustomException(Exception):
+    """业务异常。
+
+    ``status_code`` 未显式传入时按 ``code`` 推导（见 :func:`resolve_http_status`），
+    默认 400（客户端可修正）而非 500；只有确属服务端故障的场景才应显式传 500，
+    或使用 ``code=RET.SERVERERR.code``。
+    """
+
     def __init__(
         self,
         msg: str = RET.EXCEPTION.msg,
         code: int = RET.EXCEPTION.code,
-        status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR,
+        status_code: int | None = None,
         data: Any | None = None,
         success: bool = False,
     ) -> None:
         super().__init__(msg)
-        self.status_code = status_code
+        self.status_code = status_code if status_code is not None else resolve_http_status(code)
         self.code = code
         self.msg = msg
         self.data = data
@@ -61,11 +116,15 @@ class CustomException(Exception):
 def handle_exception(app: FastAPI) -> None:
     @app.exception_handler(CustomException)
     async def custom_exception_handler(request: Request, exc: CustomException) -> JSONResponse:
-        logger.error(
-            "[自定义异常] {} {} | code={} | msg={} | data={}",
+        # 4xx 是「客户端可修正」的业务结果，5xx 才是服务端故障：分级记录，
+        # 避免每个校验失败都打 ERROR 把真正的故障信号淹没。
+        log = logger.error if exc.status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR else logger.warning
+        log(
+            "[自定义异常] {} {} | code={} | status={} | msg={} | data={}",
             request.method,
             request.url.path,
             exc.code,
+            exc.status_code,
             exc.msg,
             exc.data,
         )
@@ -96,7 +155,7 @@ def handle_exception(app: FastAPI) -> None:
             request.url.path,
             errors,
         )
-        return ErrorResponse(msg=str(msg), status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, data=errors)
+        return ErrorResponse(msg=str(msg), status_code=_HTTP_422, data=errors)
 
     @app.exception_handler(ResponseValidationError)
     async def response_validation_handler(request: Request, exc: ResponseValidationError) -> JSONResponse:

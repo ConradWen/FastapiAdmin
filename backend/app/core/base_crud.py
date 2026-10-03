@@ -78,7 +78,7 @@ class CRUDBase[ModelType: ModelMixin, CreateSchemaType, UpdateSchemaType]:
             result: Result = await self.db.execute(sql)
             return result.scalars().first()
         except Exception as e:
-            raise CustomException(msg=f"获取查询失败: {e!s}") from e
+            raise CustomException(msg=f"获取查询失败: {e!s}", status_code=500) from e
 
     async def get_or_404(
         self,
@@ -89,12 +89,15 @@ class CRUDBase[ModelType: ModelMixin, CreateSchemaType, UpdateSchemaType]:
         include_deleted: bool = False,
         **kwargs,
     ) -> ModelType | OutSchemaType:
-        """查不到直接抛异常。支持 id 快捷入参，也支持 **kwargs 传多个条件。"""
+        """查不到直接抛异常。支持 id 快捷入参，也支持 **kwargs 传多个条件。
+
+        「资源不存在」属客户端可修正的结果：按 404 返回（业务 code 保持默认，前端仍展示 msg）。
+        """
         if id is not None:
             kwargs["id"] = id
         obj = await self.get(preload=preload, include_deleted=include_deleted, **kwargs)
         if not obj:
-            raise CustomException(msg=msg)
+            raise CustomException(msg=msg, status_code=404)
         return out_schema.model_validate(obj) if out_schema else obj
 
     async def exists(self, include_deleted: bool = False, **kwargs) -> bool:
@@ -109,7 +112,7 @@ class CRUDBase[ModelType: ModelMixin, CreateSchemaType, UpdateSchemaType]:
             result: Result = await self.db.execute(count_sql)
             return result.scalar() or 0
         except Exception as e:
-            raise CustomException(msg=f"统计失败: {e!s}") from e
+            raise CustomException(msg=f"统计失败: {e!s}", status_code=500) from e
 
     async def get_list(
         self,
@@ -131,7 +134,7 @@ class CRUDBase[ModelType: ModelMixin, CreateSchemaType, UpdateSchemaType]:
             result: Result = await self.db.execute(sql)
             return result.scalars().all()
         except Exception as e:
-            raise CustomException(msg=f"列表查询失败: {e!s}") from e
+            raise CustomException(msg=f"列表查询失败: {e!s}", status_code=500) from e
 
     async def page(
         self,
@@ -179,7 +182,7 @@ class CRUDBase[ModelType: ModelMixin, CreateSchemaType, UpdateSchemaType]:
                 items=items,
             )
         except Exception as e:
-            raise CustomException(msg=f"分页查询失败: {e!s}") from e
+            raise CustomException(msg=f"分页查询失败: {e!s}", status_code=500) from e
 
     # ── 写入 ──────────────────────────────────────────────────────────
 
@@ -215,7 +218,7 @@ class CRUDBase[ModelType: ModelMixin, CreateSchemaType, UpdateSchemaType]:
 
             return obj
         except Exception as e:
-            raise CustomException(msg=f"创建失败: {e!s}") from e
+            raise CustomException(msg=f"创建失败: {e!s}", status_code=500) from e
 
     async def update(self, id: int, data: UpdateSchemaType | dict[str, Any]) -> ModelType:
         """更新记录。用 exclude_unset / exclude_none 准确表达前端意图。"""
@@ -253,7 +256,7 @@ class CRUDBase[ModelType: ModelMixin, CreateSchemaType, UpdateSchemaType]:
         except CustomException:
             raise
         except Exception as e:
-            raise CustomException(msg=f"更新失败: {e!s}") from e
+            raise CustomException(msg=f"更新失败: {e!s}", status_code=500) from e
 
     async def delete(self, ids: list[int]) -> None:
         """软删除优先，无软删除则物理删除。"""
@@ -269,7 +272,7 @@ class CRUDBase[ModelType: ModelMixin, CreateSchemaType, UpdateSchemaType]:
             await self.db.execute(sql)
             await self.db.flush()
         except Exception as e:
-            raise CustomException(msg=f"删除失败: {e!s}") from e
+            raise CustomException(msg=f"删除失败: {e!s}", status_code=500) from e
 
     async def clear(self) -> None:
         """清空整表。软删除模式下相当于"回收站清空"，只清理已删标记的记录。"""
@@ -283,7 +286,7 @@ class CRUDBase[ModelType: ModelMixin, CreateSchemaType, UpdateSchemaType]:
             await self.db.execute(sql)
             await self.db.flush()
         except Exception as e:
-            raise CustomException(msg=f"清空失败: {e!s}") from e
+            raise CustomException(msg=f"清空失败: {e!s}", status_code=500) from e
 
     async def set(self, ids: list[int], include_deleted: bool = False, **kwargs) -> None:
         """批量更新。软删除模式下默认跳过已删除的记录。"""
@@ -296,7 +299,7 @@ class CRUDBase[ModelType: ModelMixin, CreateSchemaType, UpdateSchemaType]:
             await self.db.execute(sql)
             await self.db.flush()
         except Exception as e:
-            raise CustomException(msg=f"批量更新失败: {e!s}") from e
+            raise CustomException(msg=f"批量更新失败: {e!s}", status_code=500) from e
 
     # ── 条件与排序 ────────────────────────────────────────────────────
 

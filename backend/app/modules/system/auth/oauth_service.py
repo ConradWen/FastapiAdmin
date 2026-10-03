@@ -72,7 +72,8 @@ def _require_credentials(provider: OAuthProvider) -> tuple[str, str]:
     else:
         raise CustomException(msg="不支持的 OAuth 渠道")
     if not cid or not sec:
-        raise CustomException(msg=f"{provider} OAuth 未配置（客户端密钥为空）")
+        # 渠道密钥为空属**部署配置缺失**：客户端无论怎么改请求都无法成功，按 500 返回以免监控误判为客户端错误
+        raise CustomException(msg=f"{provider} OAuth 未配置（客户端密钥为空）", status_code=500)
     return cid, sec
 
 
@@ -136,7 +137,7 @@ async def _http_json(method: str, url: str, **kwargs: Any) -> Any:
         except json.JSONDecodeError:
             text = r.text
             logger.error(f"OAuth 非 JSON 响应: {text[:500]}")
-            raise CustomException(msg="OAuth 接口返回异常")
+            raise CustomException(msg="OAuth 接口返回异常", status_code=500)
 
 
 async def _http_text(method: str, url: str, **kwargs: Any) -> str:

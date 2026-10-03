@@ -80,7 +80,7 @@ def decrypt_password(cipher: str | None) -> str:
     try:
         return CryptoUtil.decrypt(cipher)
     except CustomException as e:
-        raise CustomException(msg=f"存储源密码解密失败：{e!s}")
+        raise CustomException(msg=f"存储源密码解密失败：{e!s}", status_code=500)
 
 
 # 文件系统类协议与对象存储类协议的划分：仅用于文档说明与配置元数据，
@@ -322,7 +322,7 @@ class BaseStorageAdapter(ABC):
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 list(pool.map(_run, tasks))
         if errors:
-            raise CustomException(msg=f"批量上传失败 {len(errors)}/{len(tasks)} 个文件，首个错误: {errors[0]!s}")
+            raise CustomException(msg=f"批量上传失败 {len(errors)}/{len(tasks)} 个文件，首个错误: {errors[0]!s}", status_code=500)
         return len(tasks)
 
     def _sync_download_dir(self, remote_dir: str, local_dir: str, concurrency: int) -> int:
@@ -352,7 +352,7 @@ class BaseStorageAdapter(ABC):
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 list(pool.map(_run, tasks))
         if errors:
-            raise CustomException(msg=f"批量下载失败 {len(errors)}/{len(tasks)} 个文件，首个错误: {errors[0]!s}")
+            raise CustomException(msg=f"批量下载失败 {len(errors)}/{len(tasks)} 个文件，首个错误: {errors[0]!s}", status_code=500)
         return len(tasks)
 
     @staticmethod

@@ -96,7 +96,7 @@ class CosStorageAdapter(BaseStorageAdapter):
                 EnableMD5=self._adv.enable_md5,
             )
         except Exception as e:
-            raise CustomException(msg=f"COS 上传失败: {e!s}")
+            raise CustomException(msg=f"COS 上传失败: {e!s}", status_code=500)
         return remote_path
 
     def _sync_download(self, remote_path: str, local_path: str) -> str:
@@ -107,7 +107,7 @@ class CosStorageAdapter(BaseStorageAdapter):
                 DestFilePath=local_path,
             )
         except Exception as e:
-            raise CustomException(msg=f"COS 下载失败: {e!s}")
+            raise CustomException(msg=f"COS 下载失败: {e!s}", status_code=500)
         return local_path
 
     def _sync_delete(self, remote_path: str) -> None:
@@ -122,7 +122,7 @@ class CosStorageAdapter(BaseStorageAdapter):
         try:
             self.client.delete_object(Bucket=self._require_bucket(), Key=remote_path)
         except Exception as e:
-            raise CustomException(msg=f"COS 删除失败: {e!s}")
+            raise CustomException(msg=f"COS 删除失败: {e!s}", status_code=500)
 
     def _sync_exists(self, remote_path: str) -> bool:
         try:
@@ -181,7 +181,7 @@ class CosStorageAdapter(BaseStorageAdapter):
                     break
             return result
         except Exception as e:
-            raise CustomException(msg=f"COS 列表失败: {e!s}")
+            raise CustomException(msg=f"COS 列表失败: {e!s}", status_code=500)
 
     def _sync_list_page(self, prefix: str, page_size: int, cursor: str | None) -> StoragePage:
         """游标分页：单次 SDK 请求只拉一页（COS Marker），翻页经前端回传游标。"""
@@ -250,7 +250,7 @@ class CosStorageAdapter(BaseStorageAdapter):
                 next_cursor=next_cursor or None,
             )
         except Exception as e:
-            raise CustomException(msg=f"COS 列表失败: {e!s}")
+            raise CustomException(msg=f"COS 列表失败: {e!s}", status_code=500)
 
     def _sync_list_buckets(self) -> list[str]:
         """列出账号下全部存储桶。"""
@@ -259,7 +259,7 @@ class CosStorageAdapter(BaseStorageAdapter):
             buckets = (resp.get("Buckets") or {}).get("Bucket") or []
             return [b.get("Name", "") for b in buckets if b.get("Name")]
         except Exception as e:
-            raise CustomException(msg=f"COS 桶列表失败: {e!s}")
+            raise CustomException(msg=f"COS 桶列表失败: {e!s}", status_code=500)
 
     def _sync_get_url(self, remote_path: str, expire: int) -> str:
         """生成预签名 URL
@@ -280,7 +280,7 @@ class CosStorageAdapter(BaseStorageAdapter):
                 Expired=expire,
             )
         except Exception as e:
-            raise CustomException(msg=f"COS 生成预签名 URL 失败: {e!s}")
+            raise CustomException(msg=f"COS 生成预签名 URL 失败: {e!s}", status_code=500)
 
     # ── 目录操作（对象存储以 key/ 占位对象模拟目录）──────────────────
 
@@ -311,13 +311,13 @@ class CosStorageAdapter(BaseStorageAdapter):
         try:
             self.client.put_object(Bucket=self._require_bucket(), Key=remote_dir.rstrip("/") + "/", Body=b"")
         except Exception as e:
-            raise CustomException(msg=f"COS 创建目录失败: {e!s}")
+            raise CustomException(msg=f"COS 创建目录失败: {e!s}", status_code=500)
 
     def _sync_rmdir(self, remote_dir: str) -> None:
         try:
             self.client.delete_object(Bucket=self._require_bucket(), Key=remote_dir.rstrip("/") + "/")
         except Exception as e:
-            raise CustomException(msg=f"COS 删除目录失败: {e!s}")
+            raise CustomException(msg=f"COS 删除目录失败: {e!s}", status_code=500)
 
     def _sync_copy(self, src: str, dst: str) -> None:
         """复制：目录走基类递归实现；文件用服务端 copy_object。"""
@@ -331,7 +331,7 @@ class CosStorageAdapter(BaseStorageAdapter):
                 CopySource={"Bucket": self._require_bucket(), "Key": src},
             )
         except Exception as e:
-            raise CustomException(msg=f"COS 复制失败: {e!s}")
+            raise CustomException(msg=f"COS 复制失败: {e!s}", status_code=500)
 
     def _sync_rename(self, src: str, dst: str) -> None:
         """重命名/移动：目录先复制后删除；文件 copy_object 后删源。"""
@@ -345,7 +345,7 @@ class CosStorageAdapter(BaseStorageAdapter):
         try:
             keys = self._list_all_keys(prefix)
         except Exception as e:
-            raise CustomException(msg=f"COS 递归列表失败: {e!s}")
+            raise CustomException(msg=f"COS 递归列表失败: {e!s}", status_code=500)
         return self._entries_from_keys(keys)
 
     def _sync_delete_dir(self, remote_dir: str) -> None:
@@ -361,4 +361,4 @@ class CosStorageAdapter(BaseStorageAdapter):
                     Delete={"Objects": [{"Key": k} for k in keys[i : i + 1000]], "Quiet": True},
                 )
         except Exception as e:
-            raise CustomException(msg=f"COS 递归删除失败: {e!s}")
+            raise CustomException(msg=f"COS 递归删除失败: {e!s}", status_code=500)

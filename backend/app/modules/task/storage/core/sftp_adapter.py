@@ -118,7 +118,7 @@ class SftpStorageAdapter(BaseStorageAdapter):
                 self._ensure_remote_dir(client, dir_part)
             client.put(local_path, remote_path)
         except Exception as e:
-            raise CustomException(msg=f"SFTP 上传失败: {e!s}")
+            raise CustomException(msg=f"SFTP 上传失败: {e!s}", status_code=500)
         return remote_path
 
     def _sync_download(self, remote_path: str, local_path: str) -> str:
@@ -141,14 +141,14 @@ class SftpStorageAdapter(BaseStorageAdapter):
             else:
                 client.get(remote_path, local_path)
         except Exception as e:
-            raise CustomException(msg=f"SFTP 下载失败: {e!s}")
+            raise CustomException(msg=f"SFTP 下载失败: {e!s}", status_code=500)
         return local_path
 
     def _sync_delete(self, remote_path: str) -> None:
         try:
             self._connect().remove(remote_path)
         except Exception as e:
-            raise CustomException(msg=f"SFTP 删除失败: {e!s}")
+            raise CustomException(msg=f"SFTP 删除失败: {e!s}", status_code=500)
 
     def _sync_exists(self, remote_path: str) -> bool:
         try:
@@ -162,7 +162,7 @@ class SftpStorageAdapter(BaseStorageAdapter):
             # 空 prefix 表示浏览根目录：SFTP 用 "." 表示登录后的当前目录
             attrs = self._connect().listdir_attr(prefix or ".")
         except Exception as e:
-            raise CustomException(msg=f"SFTP 列表失败: {e!s}")
+            raise CustomException(msg=f"SFTP 列表失败: {e!s}", status_code=500)
         result: list[StorageObject] = []
         for attr in attrs:
             result.append(
@@ -189,19 +189,19 @@ class SftpStorageAdapter(BaseStorageAdapter):
         try:
             self._ensure_remote_dir(self._connect(), remote_dir)
         except Exception as e:
-            raise CustomException(msg=f"SFTP 创建目录失败: {e!s}")
+            raise CustomException(msg=f"SFTP 创建目录失败: {e!s}", status_code=500)
 
     def _sync_rmdir(self, remote_dir: str) -> None:
         try:
             self._connect().rmdir(remote_dir)
         except Exception as e:
-            raise CustomException(msg=f"SFTP 删除目录失败: {e!s}")
+            raise CustomException(msg=f"SFTP 删除目录失败: {e!s}", status_code=500)
 
     def _sync_rename(self, src: str, dst: str) -> None:
         try:
             self._connect().posix_rename(src, dst)
         except Exception as e:
-            raise CustomException(msg=f"SFTP 重命名失败: {e!s}")
+            raise CustomException(msg=f"SFTP 重命名失败: {e!s}", status_code=500)
 
     def _sync_copy(self, src: str, dst: str) -> None:
         """复制：目录走基类递归实现；文件用通道流式复制（SFTP 无服务端复制）。"""
@@ -214,4 +214,4 @@ class SftpStorageAdapter(BaseStorageAdapter):
                 while chunk := rf.read(1024 * 1024):
                     wf.write(chunk)
         except Exception as e:
-            raise CustomException(msg=f"SFTP 复制失败: {e!s}")
+            raise CustomException(msg=f"SFTP 复制失败: {e!s}", status_code=500)

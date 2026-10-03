@@ -71,7 +71,7 @@ class CryptoUtil:
                 return fernet.decrypt(cipher.encode("utf-8")).decode("utf-8")
             except (InvalidToken, ValueError):
                 continue
-        raise CustomException(msg="敏感数据解密失败，可能原因：DATA_ENCRYPTION_KEY/SECRET_KEY 变更或数据损坏")
+        raise CustomException(msg="敏感数据解密失败，可能原因：DATA_ENCRYPTION_KEY/SECRET_KEY 变更或数据损坏", status_code=500)
 
     @classmethod
     def decrypt_or_keep(cls, value: str | None) -> str:

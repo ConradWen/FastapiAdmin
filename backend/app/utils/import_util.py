@@ -154,7 +154,7 @@ class ImportUtil:
                 if "cannot import name" not in str(e):
                     raise ImportError(f"❗️ 警告: 无法导入模块 {module_name}: {e}")
             except Exception as e:
-                raise CustomException(f"❌️ 处理模块 {module_name} 时出错: {e}")
+                raise CustomException(f"❌️ 处理模块 {module_name} 时出错: {e}", status_code=500)
 
         # 查找apscheduler_jobs表的模型（如果存在）
         cls._find_apscheduler_model(base_class, models, seen_models, seen_tables)
@@ -205,4 +205,4 @@ class ImportUtil:
                 except ImportError:
                     pass
         except Exception as e:
-            raise CustomException(f"❗️ 查找APScheduler模型时出错: {e}")
+            raise CustomException(f"❗️ 查找APScheduler模型时出错: {e}", status_code=500)

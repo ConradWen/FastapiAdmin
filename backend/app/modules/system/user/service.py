@@ -379,9 +379,12 @@ class UserService:
                 result += "\n错误信息:\n" + "\n".join(error_msgs)
             return result
 
+        except CustomException:
+            # 业务异常原样透传（导入文件为空 / 缺少必要列 / 单行数据不合法等属客户端可修正，保留 400）
+            raise
         except Exception as e:
             logger.error(f"批量导入用户失败: {e!s}")
-            raise CustomException(msg=f"导入失败: {e!s}") from e
+            raise CustomException(msg=f"导入失败: {e!s}", status_code=500) from e
 
     async def _process_import_row(
         self,
