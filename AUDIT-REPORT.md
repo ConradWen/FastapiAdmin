@@ -171,7 +171,11 @@
 | 策略 | 生产 CORS 不再回落通配；FORWARDED_ALLOW_IPS 收敛为应用网段；DEMO_ENABLE 显式化 | 恶意 Origin 无许可头；容器内环境变量实测 |
 | 前端 | 5 条 P0（生产构建开关、令牌刷新、上传路径、WS/开发地址） | type-check×2、build:prod、build:h5 均 exit 0；产物第一方 console 0 命中；H5 内 localhost:5180 0 命中 |
 | 后端 | 业务异常按语义返回（客户端 4xx / 内部故障 500）；调度器 exec 默认关闭；代码生成按上下文转义 | ruff 全过、pytest 47 passed；AST 级对抗载荷无法注入；线上验证码过期由 500 变 400 |
-| 后端（复核未通过，整改中） | 代码生成注入面**未真正关闭**：`column_type` 未安全化即进入代码位置 `mapped_column({{ sqlalchemy_type }})` | 独立复核 t12 = needs_revision；队长复现 `varchar(100)); import app.config.setting as _s; ... #` 原样拼入 → 自动跟进 t13（修复）/t14（复审） |
+| 后端（复核未通过 → t14 pass） | 代码生成注入面曾**未真正关闭**：`column_type` 未安全化即进入代码位置 `mapped_column({{ sqlalchemy_type }})` | 独立复核 t12 = needs_revision；队长复现载荷原样拼入 → t13 整改（类型白名单 + 结构闸门）、t14 复审 **pass** |
+| 后端（错误码收敛） | 单一事实来源：删除全部显式 `status_code`（含构造器参数），HTTP 语义只由 `RET.code → fastapi.status` 映射决定；`_DEFAULT_BUSINESS_STATUS` 降为未登记码安全网 | 业务代码中 `CustomException` 带 status_code = 0；AST 护栏（注入违规即失败）；语义探针 400/401/403/404/500 全对 |
+| 后端（异常写法统一） | 删除 `CustomException.internal` 与 132 处包装：意外异常交全局处理器（5xx + 通用文案 + 日志），需运维上下文处 `logger.exception(...) + raise`；6 处 4xx→5xx 反转点补 `except CustomException: raise` | `grep CustomException.internal` = 0；构造器传 status_code 抛 TypeError；AST 审计残留 0；97 用例通过；线上验证码过期仍 400 且保留业务文案 |
+| 后端（全局兜底修正） | SQLAlchemyError 非完整性错误由 400 改为 503（连接）/500（其它），文案不再拼 `exc_type` | 读码 + 探针实测 409/503/503/500/500 |
+| 前端（错误文案） | 错误提示改为「后端 msg 优先 → 业务码兜底 → 状态码兜底 → 通用」，去掉按 code 白名单取文案的耦合（含 Blob 下载分支；401 排除在解析外以不影响静默续期） | type-check exit 0；vitest 41 用例（含 500+4500 与 404+404 文案断言）；成功下载分支零改动 |
 
 ### 9.2 仍未处理（需后续立项或产品决策）
 
@@ -184,6 +188,9 @@
 | 测试覆盖与夹具 | 夹具掩盖缺陷、迁移链路 0 覆盖（CI 已建立，但用例仍需补） |
 | 移动端其它缺陷 | `alova.ts:115-119` 请求头写成 `ContentType`（缺连字符），修正需回归上传/表单/JSON 三类请求 |
 | 密钥残留 | 旧数据库口令与 OPENAI_API_KEY 仍存在于 git 历史，建议按已泄露处理并重新签发 |
+| 对外口径（异常统一后的取舍） | 存储「测试连接」密钥环损坏、上传/下载失败、OAuth 渠道未配置、Redis 同步失败等已由具体原因变为通用 5xx 文案（细节只在日志）。若希望管理员在界面看到可操作原因，正确做法是为这些场景定义**业务码**，而不是回到「包装意外异常」 |
+| 仍可能外泄的出口 | `ValueError` 全局处理器返回 `msg=str(exc)`；建议改为通用文案 + 日志，或让我们的校验统一抛 `CustomException` |
+| 静默吞异常（既有） | 48 处「记录日志但不 raise」的 best-effort 处理器（redis_crud、ap_scheduler、middlewares、discover 等），属审计「静默吞异常」主线，建议单独排一轮 |
 
 ### 9.3 本轮产生的回滚资产
 
