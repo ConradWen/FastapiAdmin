@@ -49,7 +49,7 @@ class OssStorageAdapter(BaseStorageAdapter):
         cfg.disable_download_crc64_check = adv.disable_download_crc64_check
         cfg.enabled_redirect = adv.enabled_redirect
         cfg.use_dualstack_endpoint = adv.use_dualstack_endpoint
-        self.client = oss.Client(cfg)
+        self.client: oss.Client = oss.Client(cfg)
 
     def _sync_test_connection(self) -> bool:
         try:
@@ -73,8 +73,9 @@ class OssStorageAdapter(BaseStorageAdapter):
                 part_size=part_size,
                 parallel_num=concurrency,
             )
-        except Exception as e:
-            raise CustomException(msg=f"OSS 上传失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('OSS 上传失败')
+            raise
         return remote_path
 
     def _sync_download(self, remote_path: str, local_path: str) -> str:
@@ -83,15 +84,17 @@ class OssStorageAdapter(BaseStorageAdapter):
                 oss.GetObjectRequest(bucket=self.bucket_name, key=remote_path),
                 local_path,
             )
-        except Exception as e:
-            raise CustomException(msg=f"OSS 下载失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('OSS 下载失败')
+            raise
         return local_path
 
     def _sync_delete(self, remote_path: str) -> None:
         try:
             self.client.delete_object(oss.DeleteObjectRequest(bucket=self.bucket_name, key=remote_path))
-        except Exception as e:
-            raise CustomException(msg=f"OSS 删除失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('OSS 删除失败')
+            raise
 
     def _sync_exists(self, remote_path: str) -> bool:
         try:
@@ -139,8 +142,9 @@ class OssStorageAdapter(BaseStorageAdapter):
                         )
                     )
             return result
-        except Exception as e:
-            raise CustomException(msg=f"OSS 列表失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('OSS 列表失败')
+            raise
 
     def _sync_list_page(self, prefix: str, page_size: int, cursor: str | None) -> StoragePage:
         """游标分页：单次 SDK 请求只拉一页（OSS continuation_token），翻页经前端回传游标。"""
@@ -177,8 +181,9 @@ class OssStorageAdapter(BaseStorageAdapter):
                     )
                 )
             return StoragePage(items=items, has_next=truncated, next_cursor=next_cursor)
-        except Exception as e:
-            raise CustomException(msg=f"OSS 列表失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('OSS 列表失败')
+            raise
 
     def _sync_list_buckets(self) -> list[str]:
         """列出账号下全部存储桶。"""
@@ -190,8 +195,9 @@ class OssStorageAdapter(BaseStorageAdapter):
                     if b.name:
                         result.append(b.name)
             return result
-        except Exception as e:
-            raise CustomException(msg=f"OSS 桶列表失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('OSS 桶列表失败')
+            raise
 
     def _sync_get_url(self, remote_path: str, expire: int) -> str | None:
         try:
@@ -200,8 +206,9 @@ class OssStorageAdapter(BaseStorageAdapter):
                 expires=timedelta(seconds=expire),
             )
             return result.url
-        except Exception as e:
-            raise CustomException(msg=f"OSS 生成预签名 URL 失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('OSS 生成预签名 URL 失败')
+            raise
 
     # ── 目录操作（对象存储以 key/ 占位对象模拟目录）──────────────────
 
@@ -230,14 +237,16 @@ class OssStorageAdapter(BaseStorageAdapter):
     def _sync_mkdir(self, remote_dir: str) -> None:
         try:
             self.client.put_object(oss.PutObjectRequest(bucket=self.bucket_name, key=remote_dir.rstrip("/") + "/", body=b""))
-        except Exception as e:
-            raise CustomException(msg=f"OSS 创建目录失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('OSS 创建目录失败')
+            raise
 
     def _sync_rmdir(self, remote_dir: str) -> None:
         try:
             self.client.delete_object(oss.DeleteObjectRequest(bucket=self.bucket_name, key=remote_dir.rstrip("/") + "/"))
-        except Exception as e:
-            raise CustomException(msg=f"OSS 删除目录失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('OSS 删除目录失败')
+            raise
 
     def _sync_copy(self, src: str, dst: str) -> None:
         """复制：目录走基类递归实现；文件用服务端 copy_object。"""
@@ -248,8 +257,9 @@ class OssStorageAdapter(BaseStorageAdapter):
             self.client.copy_object(
                 oss.CopyObjectRequest(bucket=self.bucket_name, key=dst, source_bucket=self.bucket_name, source_key=src)
             )
-        except Exception as e:
-            raise CustomException(msg=f"OSS 复制失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('OSS 复制失败')
+            raise
 
     def _sync_rename(self, src: str, dst: str) -> None:
         """重命名/移动：目录先复制后删除；文件 copy_object 后删源。"""
@@ -262,8 +272,9 @@ class OssStorageAdapter(BaseStorageAdapter):
     def _sync_list_recursive(self, prefix: str) -> list[StorageObject]:
         try:
             keys = self._list_all_keys(prefix)
-        except Exception as e:
-            raise CustomException(msg=f"OSS 递归列表失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('OSS 递归列表失败')
+            raise
         return self._entries_from_keys(keys)
 
     def _sync_delete_dir(self, remote_dir: str) -> None:
@@ -281,5 +292,6 @@ class OssStorageAdapter(BaseStorageAdapter):
                         quiet=True,
                     )
                 )
-        except Exception as e:
-            raise CustomException(msg=f"OSS 递归删除失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('OSS 递归删除失败')
+            raise

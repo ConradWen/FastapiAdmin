@@ -1,12 +1,13 @@
 """安全默认值与异常状态码回归测试。
 
 覆盖 backend/audit-security.md 的 S9/S10 与 backend/audit-backend.md 的 H1/H5 同类根因：
-- 业务异常按自身状态码返回：客户端可修正类（参数/验证码/权限/不存在）为 4xx；
-- 「包装底层异常」的内部故障（DB/驱动/Redis/SDK）显式为 500，不得降级成 4xx（否则监控误判）；
+- 业务异常一律只传 code（HTTP 状态由映射表推导）：参数/验证码 400、权限 403、不存在 404；
+- 意外异常不在业务代码里包装（t19）：原始异常冒泡，由全局处理器给 5xx + 通用文案 + 日志；
 - 定时任务代码块执行默认关闭，关闭时给出明确失败原因（而非静默执行/静默跳过）；
 - 生产环境 CORS 不再回落为通配 ``["*"]``（与 ``ALLOW_CREDENTIALS=True`` 组合会放行任意站点带凭据跨域）。
 """
 
+import json
 import pathlib
 import re
 from datetime import datetime
@@ -21,6 +22,7 @@ from app.common.enums import RET, EnvironmentEnum
 from app.config.setting import Settings, settings
 from app.core.ap_scheduler import SchedulerUtil
 from app.core.exceptions import CustomException, handle_exception, resolve_http_status
+from app.core.logger import logger
 from app.core.middlewares import CustomCORSMiddleware
 from app.modules.task.cronjob.node.service import _add_job_with_trigger
 
@@ -36,9 +38,9 @@ def test_custom_exception_defaults_to_4xx() -> None:
 
 
 def test_custom_exception_status_resolution() -> None:
-    """显式状态码优先；否则按业务码映射；未知码回落 400。"""
-    assert CustomException(msg="x", status_code=403).status_code == 403
-    assert CustomException(msg="x", status_code=500).status_code == 500
+    """HTTP 状态只能由 code 经映射表推导（t19：构造器已不接受 status_code）。"""
+    with pytest.raises(TypeError):
+        CustomException(msg="x", status_code=403)
     assert CustomException(msg="x", code=RET.UNAUTHORIZED.code).status_code == 401
     assert CustomException(msg="x", code=RET.NOT_FOUND.code).status_code == 404
     assert CustomException(msg="x", code=RET.NO_PERMISSION.code).status_code == 403
@@ -59,7 +61,7 @@ def _exception_probe_app() -> FastAPI:
 
     @app.get("/forbidden")
     async def _forbidden() -> None:
-        raise CustomException(msg="无权限操作", code=RET.NO_PERMISSION.code, status_code=403)
+        raise CustomException(msg="无权限操作", code=RET.NO_PERMISSION.code)
 
     @app.get("/boom")
     async def _boom() -> None:
@@ -80,8 +82,8 @@ def test_captcha_expired_returns_4xx_with_stable_body() -> None:
     assert body["status_code"] == 400
 
 
-def test_explicit_status_code_is_honored_by_handler() -> None:
-    """显式状态码仍按原样返回（403 不被 400 覆盖）。"""
+def test_forbidden_code_maps_to_403_via_table() -> None:
+    """无权限业务码经映射表得到 403（不依赖显式 status_code）。"""
     client = TestClient(_exception_probe_app(), raise_server_exceptions=False)
     response = client.get("/forbidden")
     assert response.status_code == 403, response.text
@@ -293,13 +295,12 @@ def _crud(db: object, model: type | None = None):
         ("set", lambda c: c.set(ids=[1], status=0)),
     ],
 )
-async def test_base_crud_wrapped_internal_failure_returns_500(case: str, call) -> None:
-    """CRUD 公共出口包装底层异常时必须 500（此前被 t10 降级成 400）。"""
-    with pytest.raises(CustomException) as excinfo:
+async def test_base_crud_internal_failure_bubbles_original_exception(case: str, call) -> None:
+    """CRUD 公共出口不再包装意外异常：原始异常（含类型与信息）原样冒泡，由全局处理器给 5xx。"""
+    with pytest.raises(RuntimeError) as excinfo:
         await call(_crud(_FailingSession()))
-    assert excinfo.value.status_code == 500, f"{case} 未按 500 返回（实际 {excinfo.value.status_code}）"
-    assert excinfo.value.success is False
-    assert "失败" in excinfo.value.msg
+    assert "connection lost" in str(excinfo.value), f"{case} 丢掉了原始错误信息"
+    assert not isinstance(excinfo.value, CustomException), f"{case} 仍被包装成业务异常"
 
 
 async def test_get_or_404_returns_404_for_missing_row() -> None:
@@ -315,32 +316,33 @@ def test_client_side_errors_keep_4xx() -> None:
     assert CustomException(msg="验证码已过期，请刷新").status_code == 400
     assert CustomException(msg="请求参数错误").status_code == 400
     assert CustomException(msg="无权限操作", code=RET.NO_PERMISSION.code).status_code == 403
-    assert CustomException(msg="该数据不存在", status_code=404).status_code == 404
+    assert CustomException(msg="该数据不存在", code=RET.NOT_FOUND.code).status_code == 404
     assert resolve_http_status(RET.NOT_FOUND.code) == 404
     assert resolve_http_status(RET.NO_PERMISSION.code) == 403
     assert resolve_http_status(RET.BAD_REQUEST.code) == 400
     assert resolve_http_status(RET.SERVERERR.code) == 500
 
 
-def test_internal_failure_body_keeps_business_code_and_message() -> None:
-    """内部故障 500 时响应体仍带原始 msg 与业务 code（前端依赖 code=-1 展示真实原因）。"""
+def test_internal_failure_body_is_generic_and_hides_details() -> None:
+    """意外异常 → 全局处理器：500 + 通用文案，内部细节只进日志（t19）。"""
     app = FastAPI()
     handle_exception(app)
 
     @app.get("/internal")
     async def _internal() -> None:
-        raise CustomException(msg="统计失败: 模拟底层驱动故障", status_code=500)
+        raise RuntimeError("统计失败: 模拟底层驱动故障 connection lost")
 
     response = TestClient(app, raise_server_exceptions=False).get("/internal")
     assert response.status_code == 500
     body = response.json()
-    assert body["msg"] == "统计失败: 模拟底层驱动故障"
-    assert body["code"] == RET.EXCEPTION.code
+    assert body["msg"] == "服务器内部错误"
+    assert "connection lost" not in json.dumps(body, ensure_ascii=False)
+    assert body["code"] == RET.ERROR.code
 
 
 # 与实现同源的分类规则（见 app/core/exceptions.py 的说明与 t11 的清理范围）
 _EXC_INTERP = re.compile(r"\{(?:e|exc|err|error|ex|exception)(?:!s|!r|:[a-z]+)?\}|\{errors\[|_error_desc\(")
-_EXC_CALL = re.compile(r"CustomException\(")
+_EXC_CALL = re.compile(r"CustomException(?:\.\w+)?\(")
 _CLIENT_MARKERS = (
     "targets 参数格式错误",
     "创建成功但任务注册失败",
@@ -384,45 +386,46 @@ def _iter_custom_exception_calls(path: pathlib.Path):
         yield text[: match.start()].count("\n") + 1, text[match.start() : index + 1]
 
 
-def test_all_wrapped_internal_failures_are_explicitly_500() -> None:
-    """守卫：inScope 内凡是「包装底层异常」的 CustomException 都必须显式 500。
+def test_no_internal_wrapping_helper_anywhere() -> None:
+    """守卫（t19）：``CustomException.internal`` 已彻底移除——意外异常交给全局处理器。
 
-    否则底层故障会被默认值（400）静默降级成客户端错误，监控失去信号。
+    同时确认原来的「包装点」已改为「logger.exception(...) + raise」或直接冒泡。
     """
     offenders: list[str] = []
-    checked = 0
-    targets = [_REPO_ROOT / "app" / "core" / "base_crud.py"] + sorted((_REPO_ROOT / "app" / "modules").rglob("*.py"))
-    for path in targets:
-        for line, call in _iter_custom_exception_calls(path):
-            if not _EXC_INTERP.search(call):
-                continue
-            if any(marker in call for marker in _CLIENT_MARKERS):
-                continue
-            checked += 1
-            if "status_code=500" not in call:
-                offenders.append(f"{path.relative_to(_REPO_ROOT)}:{line}")
-    assert checked > 90, f"分类用例数异常（只匹配到 {checked} 处），分类规则可能失效"
-    assert offenders == [], f"以下代码生成路径仍可能把内部故障降级为 4xx：{offenders}"
+    for path in sorted((_REPO_ROOT / "app").rglob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        if "CustomException.internal" in text or "def internal(" in text:
+            offenders.append(str(path.relative_to(_REPO_ROOT)))
+    assert offenders == [], f"仍存在 internal 语义入口：{offenders}"
+    assert not hasattr(CustomException, "internal")
+
+    logged = (_REPO_ROOT / "app" / "core" / "base_crud.py").read_text(encoding="utf-8")
+    assert logged.count("logger.exception(") >= 9, "base_crud 的公共出口应改为 logger.exception + raise"
+    assert 'raise CustomException.internal' not in logged
 
 
-def test_base_crud_internal_wrappers_are_500() -> None:
-    """core 层专门固化：base_crud.py 全部 9 处包装路径显式 500。"""
-    calls = [
-        (line, call)
-        for line, call in _iter_custom_exception_calls(_REPO_ROOT / "app" / "core" / "base_crud.py")
-        if _EXC_INTERP.search(call)
-    ]
-    assert len(calls) == 9, f"base_crud.py 包装路径数量变化（{len(calls)}）：{[(line, call[:30]) for line, call in calls]}"
-    missing = [line for line, call in calls if "status_code=500" not in call]
-    assert missing == [], f"base_crud.py 以下行未显式 500：{missing}"
+def test_business_errors_can_pass_through_broad_except_guards() -> None:
+    """示范正确写法：宽泛 except 前先 `except CustomException: raise`，业务 400 不被改写。"""
+    app = FastAPI()
+    handle_exception(app)
 
+    async def _service() -> None:
+        raise CustomException(msg="该数据不存在", code=RET.NOT_FOUND.code)
 
-# ── 5. 升级可见性：CORS 严格启动、主机放行开关、健康检查字段 ──────────────────
-#
-# 背景：t13 把三处「静默行为变更」做成可配置 + 可观测：
-# - CORS_STRICT_STARTUP：生产未配置 CORS 白名单时从「只告警」变为「启动失败」；
-# - ALLOW_LOCALHOST_HOSTS：localhost 放行从无条件写死变为可开关；
-# - 健康检查暴露 code_exec_enabled / cors_origins_configured，避免升级后「任务不动了」无迹可循。
+    @app.get("/guarded")
+    async def _guarded() -> None:
+        try:
+            await _service()
+        except CustomException:
+            raise
+        except Exception:
+            logger.exception("查询业务数据失败")
+            raise
+
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.get("/guarded")
+    assert response.status_code == 404, response.text
+    assert response.json()["msg"] == "该数据不存在"
 
 
 def test_cors_strict_startup_fails_fast(monkeypatch: pytest.MonkeyPatch) -> None:

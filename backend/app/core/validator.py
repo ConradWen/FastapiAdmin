@@ -8,6 +8,7 @@ from app.common.constant import DATE_DISPLAY_FMT, DATETIME_DISPLAY_FMT, TIME_DIS
 from app.common.enums import RET
 from app.config.setting import settings
 from app.core.exceptions import CustomException
+from app.core.logger import logger
 from app.utils.password_util import PwdUtil
 
 # 自定义日期时间字符串类型
@@ -80,8 +81,11 @@ def datetime_validator(value: str | datetime) -> datetime:
             return datetime.strptime(value, DATETIME_DISPLAY_FMT)
         if isinstance(value, datetime):
             return value
-    except Exception:
-        raise CustomException(code=RET.ERROR.code, msg="无效的日期格式")
+    except CustomException:
+        raise
+    except Exception as e:
+        logger.exception("日期时间格式校验失败")
+        raise CustomException(code=RET.ERROR.code, msg="无效的日期格式") from e
 
 
 def date_validator(value: str | date) -> date:
@@ -101,8 +105,11 @@ def date_validator(value: str | date) -> date:
             return datetime.strptime(value, DATE_DISPLAY_FMT).date()
         if isinstance(value, date):
             return value
-    except Exception:
-        raise CustomException(code=RET.ERROR.code, msg="无效的日期格式")
+    except CustomException:
+        raise
+    except Exception as e:
+        logger.exception("日期格式校验失败")
+        raise CustomException(code=RET.ERROR.code, msg="无效的日期格式") from e
 
 
 def time_validator(value: str | time) -> time:
@@ -122,8 +129,11 @@ def time_validator(value: str | time) -> time:
             return datetime.strptime(value, TIME_DISPLAY_FMT).time()
         if isinstance(value, time):
             return value
-    except Exception:
-        raise CustomException(code=RET.ERROR.code, msg="无效的时间格式")
+    except CustomException:
+        raise
+    except Exception as e:
+        logger.exception("时间格式校验失败")
+        raise CustomException(code=RET.ERROR.code, msg="无效的时间格式") from e
 
 
 def email_validator(value: str) -> str:

@@ -5,7 +5,6 @@ import ssl
 import tempfile
 from datetime import datetime
 
-from app.core.exceptions import CustomException
 from app.core.logger import logger
 from app.modules.task.storage.core.base import BaseStorageAdapter, FtpAdvancedConfig, StorageObject, StorageProtocol
 
@@ -100,8 +99,9 @@ class FtpStorageAdapter(BaseStorageAdapter):
                 self._ensure_remote_dir(client, dir_part)
             with open(local_path, "rb") as f:
                 client.storbinary(f"STOR {remote_path}", f)
-        except Exception as e:
-            raise CustomException(msg=f"FTP 上传失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('FTP 上传失败')
+            raise
         finally:
             self._close_client(client)
         return remote_path
@@ -122,8 +122,9 @@ class FtpStorageAdapter(BaseStorageAdapter):
         try:
             with open(local_path, "wb") as f:
                 client.retrbinary(f"RETR {remote_path}", f.write)
-        except Exception as e:
-            raise CustomException(msg=f"FTP 下载失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('FTP 下载失败')
+            raise
         finally:
             self._close_client(client)
         return local_path
@@ -132,8 +133,9 @@ class FtpStorageAdapter(BaseStorageAdapter):
         client = self._new_client()
         try:
             client.delete(remote_path)
-        except Exception as e:
-            raise CustomException(msg=f"FTP 删除失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('FTP 删除失败')
+            raise
         finally:
             self._close_client(client)
 
@@ -181,8 +183,9 @@ class FtpStorageAdapter(BaseStorageAdapter):
                     )
                 )
             return result
-        except Exception as e:
-            raise CustomException(msg=f"FTP 列表失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('FTP 列表失败')
+            raise
         finally:
             self._close_client(client)
 
@@ -199,8 +202,9 @@ class FtpStorageAdapter(BaseStorageAdapter):
                     client.mkd(current)
                 except ftplib.error_perm:
                     pass  # 目录已存在时跳过（部分服务器返回 550）
-        except Exception as e:
-            raise CustomException(msg=f"FTP 创建目录失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('FTP 创建目录失败')
+            raise
         finally:
             self._close_client(client)
 
@@ -208,8 +212,9 @@ class FtpStorageAdapter(BaseStorageAdapter):
         client = self._new_client()
         try:
             client.rmd(remote_dir)
-        except Exception as e:
-            raise CustomException(msg=f"FTP 删除目录失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('FTP 删除目录失败')
+            raise
         finally:
             self._close_client(client)
 
@@ -217,8 +222,9 @@ class FtpStorageAdapter(BaseStorageAdapter):
         client = self._new_client()
         try:
             client.rename(src, dst)
-        except Exception as e:
-            raise CustomException(msg=f"FTP 重命名失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('FTP 重命名失败')
+            raise
         finally:
             self._close_client(client)
 
@@ -247,7 +253,8 @@ class FtpStorageAdapter(BaseStorageAdapter):
                     client.storbinary(f"STOR {dst}", f)
             finally:
                 os.remove(tmp_path)
-        except Exception as e:
-            raise CustomException(msg=f"FTP 复制失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('FTP 复制失败')
+            raise
         finally:
             self._close_client(client)

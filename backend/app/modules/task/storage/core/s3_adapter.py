@@ -87,22 +87,25 @@ class S3StorageAdapter(BaseStorageAdapter):
                 max_concurrency=concurrency,
             )
             self.client.upload_file(local_path, self._require_bucket(), remote_path, Config=transfer_config)
-        except Exception as e:
-            raise CustomException(msg=f"S3 上传失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('S3 上传失败')
+            raise
         return remote_path
 
     def _sync_download(self, remote_path: str, local_path: str) -> str:
         try:
             self.client.download_file(self._require_bucket(), remote_path, local_path)
-        except Exception as e:
-            raise CustomException(msg=f"S3 下载失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('S3 下载失败')
+            raise
         return local_path
 
     def _sync_delete(self, remote_path: str) -> None:
         try:
             self.client.delete_object(Bucket=self._require_bucket(), Key=remote_path)
-        except Exception as e:
-            raise CustomException(msg=f"S3 删除失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('S3 删除失败')
+            raise
 
     def _sync_exists(self, remote_path: str) -> bool:
         try:
@@ -162,8 +165,9 @@ class S3StorageAdapter(BaseStorageAdapter):
                 else:
                     break
             return result
-        except Exception as e:
-            raise CustomException(msg=f"S3 列表失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('S3 列表失败')
+            raise
 
     def _sync_list_page(self, prefix: str, page_size: int, cursor: str | None) -> StoragePage:
         """游标分页：单次 SDK 请求只拉一页（S3 ContinuationToken），翻页经前端回传游标。"""
@@ -202,16 +206,18 @@ class S3StorageAdapter(BaseStorageAdapter):
                 has_next=bool(resp.get("IsTruncated")),
                 next_cursor=resp.get("NextContinuationToken"),
             )
-        except Exception as e:
-            raise CustomException(msg=f"S3 列表失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('S3 列表失败')
+            raise
 
     def _sync_list_buckets(self) -> list[str]:
         """列出账号下全部存储桶。"""
         try:
             resp = self.client.list_buckets()
             return [b.get("Name", "") for b in resp.get("Buckets", []) if b.get("Name")]
-        except Exception as e:
-            raise CustomException(msg=f"S3 桶列表失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('S3 桶列表失败')
+            raise
 
     def _sync_get_url(self, remote_path: str, expire: int) -> str:
         try:
@@ -220,8 +226,9 @@ class S3StorageAdapter(BaseStorageAdapter):
                 Params={"Bucket": self._require_bucket(), "Key": remote_path},
                 ExpiresIn=expire,
             )
-        except Exception as e:
-            raise CustomException(msg=f"S3 生成预签名 URL 失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('S3 生成预签名 URL 失败')
+            raise
 
     def _sync_close(self) -> None:
         """关闭 boto3 客户端连接。"""
@@ -252,14 +259,16 @@ class S3StorageAdapter(BaseStorageAdapter):
     def _sync_mkdir(self, remote_dir: str) -> None:
         try:
             self.client.put_object(Bucket=self._require_bucket(), Key=remote_dir.rstrip("/") + "/", Body=b"")
-        except Exception as e:
-            raise CustomException(msg=f"S3 创建目录失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('S3 创建目录失败')
+            raise
 
     def _sync_rmdir(self, remote_dir: str) -> None:
         try:
             self.client.delete_object(Bucket=self._require_bucket(), Key=remote_dir.rstrip("/") + "/")
-        except Exception as e:
-            raise CustomException(msg=f"S3 删除目录失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('S3 删除目录失败')
+            raise
 
     def _sync_copy(self, src: str, dst: str) -> None:
         """复制：目录走基类递归实现；文件用服务端 copy_object。"""
@@ -272,8 +281,9 @@ class S3StorageAdapter(BaseStorageAdapter):
                 CopySource={"Bucket": self._require_bucket(), "Key": src},
                 Key=dst,
             )
-        except Exception as e:
-            raise CustomException(msg=f"S3 复制失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('S3 复制失败')
+            raise
 
     def _sync_rename(self, src: str, dst: str) -> None:
         """重命名/移动：目录先复制后删除；文件 copy_object 后删源。"""
@@ -286,8 +296,9 @@ class S3StorageAdapter(BaseStorageAdapter):
     def _sync_list_recursive(self, prefix: str) -> list[StorageObject]:
         try:
             keys = self._list_all_keys(prefix)
-        except Exception as e:
-            raise CustomException(msg=f"S3 递归列表失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('S3 递归列表失败')
+            raise
         return self._entries_from_keys(keys)
 
     def _sync_delete_dir(self, remote_dir: str) -> None:
@@ -302,5 +313,6 @@ class S3StorageAdapter(BaseStorageAdapter):
                     Bucket=self._require_bucket(),
                     Delete={"Objects": [{"Key": k} for k in keys[i : i + 1000]], "Quiet": True},
                 )
-        except Exception as e:
-            raise CustomException(msg=f"S3 递归删除失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('S3 递归删除失败')
+            raise

@@ -61,10 +61,11 @@ def handle_service_exception(func: Callable) -> Callable:
             return await func(*args, **kwargs)
         except CustomException:
             raise
-        except Exception as e:
+        except Exception:
             # 服务层公共出口：这里捕获到的都是**非业务**异常（模板渲染/DB/反射等内部故障），
-            # 按 500 返回，避免监控把服务端故障误判为客户端错误；业务异常由上面的分支原样透传（保留自身 4xx）
-            raise CustomException(msg=f"{func.__name__}执行失败: {e!s}", status_code=500)
+            # 记日志后原样抛出让全局异常处理器统一映射为 5xx；业务异常由上面的分支原样透传（保留自身 4xx）
+            logger.exception(f"{func.__name__}执行失败")
+            raise
 
     return wrapper
 
@@ -372,8 +373,9 @@ class GenTableService:
             return True
         except CustomException:
             raise
-        except Exception as e:
-            raise CustomException(msg=f"导入失败, {e!s}", status_code=500)
+        except Exception:
+            logger.exception('导入业务表信息失败')
+            raise
 
     @handle_service_exception
     async def create_table(self, sql: str) -> bool | None:
@@ -456,8 +458,9 @@ class GenTableService:
 
         except CustomException:
             raise
-        except Exception as e:
-            raise CustomException(msg=f"创建表结构失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('创建表结构失败')
+            raise
 
     @handle_service_exception
     async def update_gen_table(self, data: GenTableSchema, table_id: int) -> GenTableOutSchema:
@@ -518,8 +521,9 @@ class GenTableService:
                 return out
             except CustomException:
                 raise
-            except Exception as e:
-                raise CustomException(msg=str(e), status_code=500)
+            except Exception:
+                logger.exception('更新业务表信息失败')
+                raise
         else:
             raise CustomException(msg="业务表不存在")
 
@@ -543,8 +547,9 @@ class GenTableService:
             await GenTableColumnCRUD(self.auth, self.db).delete_gen_table_column_by_table_id_crud(ids)
             # 再删除表信息
             await GenTableCRUD(self.auth, self.db).delete_gen_table(ids)
-        except Exception as e:
-            raise CustomException(msg=str(e), status_code=500)
+        except Exception:
+            logger.exception('删除业务表信息失败')
+            raise
 
     @handle_service_exception
     async def get_gen_table_by_id(self, table_id: int) -> GenTableOutSchema:
@@ -711,8 +716,9 @@ class GenTableService:
                             if not init_path.exists():
                                 os.makedirs(str(d), exist_ok=True)
                                 await anyio.Path(str(init_path)).write_text("# -*- coding: utf-8 -*-", encoding="utf-8")
-                except Exception as e:
-                    raise CustomException(msg=f"渲染模板失败，表名：{table_schema.table_name}，详细错误信息：{e!s}", status_code=500)
+                except Exception:
+                    logger.exception(f"渲染模板失败，表名：{table_schema.table_name}")
+                    raise
 
         safe_schema: GenTableOutSchema = render_info[4]
         reference_ctx = Jinja2TemplateUtil.prepare_context(Jinja2TemplateUtil.sentinel_render_schema(safe_schema))
@@ -1014,8 +1020,9 @@ class GenTableService:
                 sub_cfg = await GenTableCRUD(self.auth, self.db).get_gen_table_by_name(sn)
                 if sub_cfg:
                     await self.sync_db(sn, _sync_sub=False)
-        except Exception as e:
-            raise CustomException(msg=f"同步失败: {e!s}", status_code=500)
+        except Exception:
+            logger.exception('同步失败')
+            raise
 
     async def hydrate_sub_table(self, gen_table: GenTableOutSchema) -> None:
         """主子表：优先使用已导入的子表配置，否则回退为只读 DB 结构。

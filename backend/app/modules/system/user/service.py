@@ -384,7 +384,7 @@ class UserService:
             raise
         except Exception as e:
             logger.error(f"批量导入用户失败: {e!s}")
-            raise CustomException(msg=f"导入失败: {e!s}", status_code=500) from e
+            raise
 
     async def _process_import_row(
         self,

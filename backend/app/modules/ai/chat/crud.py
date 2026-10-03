@@ -10,6 +10,7 @@ from agno.db.postgres import AsyncPostgresDb
 from agno.db.sqlite import AsyncSqliteDb
 from agno.session.team import TeamSession
 
+from app.common.enums import RET
 from app.config.setting import settings
 from app.core.base_schema import AuthSchema
 from app.core.exceptions import CustomException
@@ -43,7 +44,8 @@ def _get_agno_db() -> Any:
                     _db_instance = AsyncSqliteDb(db_file=db_uri.replace("sqlite+aiosqlite:///", ""))
                 else:
                     # settings.DATABASE_TYPE 是服务端配置：取值不在支持范围属部署配置错误，按 500 返回
-                    raise CustomException(msg=f"不支持的数据库类型: {db_type}", status_code=500)
+                    logger.error(f"不支持的数据库类型: {db_type}")
+                    raise RuntimeError(f"不支持的数据库类型: {db_type}")
     return _db_instance
 
 
@@ -142,7 +144,7 @@ class ChatSessionCRUD:
             )
         except Exception as e:
             logger.error(f"获取会话列表失败: {e}")
-            raise CustomException(msg="获取会话列表失败", status_code=500) from e
+            raise
 
         rows: list[dict[str, Any]] = []
         total = 0
@@ -174,9 +176,10 @@ class ChatSessionCRUD:
             result = await self.db.upsert_session(session=session)
         except Exception as e:
             logger.exception(f"创建会话失败: {e}")
-            raise CustomException(msg="创建会话失败", status_code=500) from e
+            raise
         if result is None:
-            raise CustomException(msg="创建会话失败", status_code=500)
+            logger.error("创建会话失败")
+            raise RuntimeError("创建会话失败")
         return result
 
     async def rename(self, session_id: str, data: ChatSessionUpdateSchema) -> None:
@@ -190,9 +193,9 @@ class ChatSessionCRUD:
             )
         except Exception as e:
             logger.error(f"更新会话失败: {e}")
-            raise CustomException(msg="更新会话失败", status_code=500) from e
+            raise
         if result is None:
-            raise CustomException(msg="会话不存在", code=10404, status_code=404)
+            raise CustomException(msg="会话不存在", code=RET.NOT_FOUND.code)
 
     async def delete(self, session_ids: list[str]) -> None:
         """批量删除会话"""
@@ -202,4 +205,4 @@ class ChatSessionCRUD:
             except Exception as e:
                 logger.error(f"删除会话失败: {session_id} - {e}")
                 # agno/SQLite 侧删除失败属内部故障，按 500 返回（session_ids 为客户端参数，但失败原因在服务端）
-                raise CustomException(msg=f"删除会话失败: {session_id}", status_code=500) from e
+                raise
