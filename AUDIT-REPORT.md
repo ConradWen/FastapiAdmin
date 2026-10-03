@@ -176,6 +176,7 @@
 | 后端（异常写法统一） | 删除 `CustomException.internal` 与 132 处包装：意外异常交全局处理器（5xx + 通用文案 + 日志），需运维上下文处 `logger.exception(...) + raise`；6 处 4xx→5xx 反转点补 `except CustomException: raise` | `grep CustomException.internal` = 0；构造器传 status_code 抛 TypeError；AST 审计残留 0；97 用例通过；线上验证码过期仍 400 且保留业务文案 |
 | 后端（全局兜底修正） | SQLAlchemyError 非完整性错误由 400 改为 503（连接）/500（其它），文案不再拼 `exc_type` | 读码 + 探针实测 409/503/503/500/500 |
 | 前端（错误文案） | 错误提示改为「后端 msg 优先 → 业务码兜底 → 状态码兜底 → 通用」，去掉按 code 白名单取文案的耦合（含 Blob 下载分支；401 排除在解析外以不影响静默续期） | type-check exit 0；vitest 41 用例（含 500+4500 与 404+404 文案断言）；成功下载分支零改动 |
+| 存储适配器（类型检查暴露的运行时缺陷） | ① OSS：`Client.uploader` 是**方法**，原写法 `self.client.uploader.upload_file(...)` 在绑定方法上取属性 → 运行时 AttributeError（OSS 上传必失败）；② SFTP/FTP：`config.host` 可空却直接传给要求 `str` 的 `connect(hostname/host)` | ① 改为 `self.client.uploader().upload_file(...)`（已按 SDK 签名核对 part_size/parallel_num）；② 补主机校验，缺主机时返回 400 业务异常；basedpyright 这三个文件由 4 error → 0；运行时探针：缺主机拦截、配主机放行 |
 
 ### 9.2 仍未处理（需后续立项或产品决策）
 

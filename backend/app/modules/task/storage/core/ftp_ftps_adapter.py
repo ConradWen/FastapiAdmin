@@ -5,6 +5,7 @@ import ssl
 import tempfile
 from datetime import datetime
 
+from app.core.exceptions import CustomException
 from app.core.logger import logger
 from app.modules.task.storage.core.base import BaseStorageAdapter, FtpAdvancedConfig, StorageObject, StorageProtocol
 
@@ -12,7 +13,14 @@ from app.modules.task.storage.core.base import BaseStorageAdapter, FtpAdvancedCo
 class _ImplicitFTP_TLS(ftplib.FTP_TLS):
     """隐式 FTPS（默认端口 990）连接子类：socket 直连即套 TLS。"""
 
-    def connect(self, host: str = "", port: int = 0, timeout: int = -999, source_address=None) -> str:
+    def connect(
+        self,
+        host: str = "",
+        port: int = 0,
+        timeout: float = -999,
+        source_address: tuple[str, int] | None = None,
+    ) -> str:
+        """覆写 ``ftplib.FTP.connect``：签名与标准库/类型存根保持一致（implicit FTPS 直连即套 TLS）。"""
         if host != "":
             self.host = host
         if port > 0:
@@ -47,6 +55,8 @@ class FtpStorageAdapter(BaseStorageAdapter):
 
     def _new_client(self) -> ftplib.FTP_TLS | ftplib.FTP:
         """建立连接并登录。FTP 明文 / FTPS（显式或隐式 TLS）按配置选择。"""
+        if not self.config.host:
+            raise CustomException(msg="FTP 存储源必须配置主机地址")
         implicit = False
         if self.config.protocol == StorageProtocol.FTPS:
             # 隐式 TLS：implicit_tls 开关或 encrypt_type>=3（兼容两种配置写法）

@@ -36,8 +36,8 @@ class SftpStorageAdapter(BaseStorageAdapter):
         """建立并复用 SFTP 连接：首次使用时连接，之后直接复用。"""
         if self._sftp is not None:
             return self._sftp
-        if not self.config.username or not self.config.password:
-            raise CustomException(msg="SFTP 存储源必须配置用户名与密码")
+        if not self.config.host or not self.config.username or not self.config.password:
+            raise CustomException(msg="SFTP 存储源必须配置主机、用户名与密码")
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:

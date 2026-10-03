@@ -67,7 +67,9 @@ class OssStorageAdapter(BaseStorageAdapter):
             # 走 SDK 高层分片上传：普通小文件自动单次上传，大文件按端点分片参数并发分片；
             # 流式传输（stream）时 part_size 为超大值，等效单次上传
             part_size, concurrency, _ = self._multipart_settings()
-            self.client.uploader.upload_file(
+            # 注意：SDK 的 ``Client.uploader`` 是**方法**（返回 Uploader），必须调用后使用；
+            # 写成 ``self.client.uploader.upload_file(...)`` 会在运行时抛 AttributeError。
+            self.client.uploader().upload_file(
                 oss.PutObjectRequest(bucket=self.bucket_name, key=remote_path),
                 local_path,
                 part_size=part_size,
