@@ -108,7 +108,22 @@ ss -tlnp | grep docker-proxy      # 确认对外只有 80/443
 
 ---
 
-## 6. 已知遗留问题
+## 6. 配置取值格式（踩过的坑）
+
+`.env` / compose 里的取值格式取决于应用侧字段类型：
+
+| 类型 | 写法 | 例子 |
+| --- | --- | --- |
+| `str`（应用内部再按逗号拆） | 逗号分隔字符串 | `PROD_CORS_ORIGINS=https://a.com,https://b.com` |
+| `list[str]`（pydantic-settings 直接解析） | **必须 JSON 数组字面量** | `OAUTH_ALLOWED_HOSTS=["service.fastapiadmin.com","*.fastapiadmin.com"]` |
+
+把 `list[str]` 字段写成逗号分隔字符串会让应用**启动期抛 `SettingsError`**，容器不断重启、网关返回 502。2026-10-04 的部署事故就是这个原因（已修复并在 compose 默认值里固化 JSON 形态）。
+
+排查方式：`docker logs --tail 40 backend`，若看到
+`pydantic_settings.exceptions.SettingsError: error parsing value for field "XXX" from source "EnvSettingsSource"`，
+就是该字段的取值格式与类型不匹配。
+
+## 7. 已知遗留问题
 
 安全与质量债的完整清单见 `AUDIT-REPORT.md` 与各分报告（`backend/audit-*.md`、`frontend/audit-*.md`、`docker/audit-deploy.md`）。当前仍待处理的高优先级项：
 

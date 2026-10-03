@@ -150,3 +150,44 @@
 | `docker/audit-deploy.md` | 容器化与部署链路（799 行） |
 
 每份报告均包含：问题清单（级别 + 文件:行号 + 现象 + 影响 + 建议）、按优先级的修复清单、未验证/存疑项。
+
+---
+
+## 9. 修复进展（2026-10-04 更新）
+
+### 9.1 已修复并验证（上线）
+
+| 类别 | 修复内容 | 验证证据 |
+| --- | --- | --- |
+| 部署面 | MySQL/Redis/backend 端口收敛到 127.0.0.1 | 宿主机 socket 实测：公网监听数 0；服务器自连公网 IP 返回 ConnectionRefused |
+| 部署面 | API 文档仅内网可访问 | 公网 403 / 内网 200 |
+| 部署面 | 容器非 root（uid=1000）运行 | 容器内 `id` = app；日志/上传/迁移目录可写 |
+| 部署面 | TLS 私钥与 .env 权限 600；隐藏文件 403 | stat 与 curl 实测 |
+| 部署面 | 静态资源长缓存；nginx 升级 1.27.5；ACME 校验路径放行 | 响应头 `max-age=31536000, immutable`；证书 153 天 |
+| 部署面 | 每日健康巡检（容器/接口/证书/磁盘/swap） | systemd timer active，日志全绿 |
+| 部署面 | CI（backend: uv+ruff+pytest；frontend: type-check+vitest） | workflow 语法与引用脚本已校验 |
+| 密钥 | SECRET_KEY 与 DATA_ENCRYPTION_KEY 轮换并注入；旧密钥保留于 OLD_KEYS | 旧密钥加密样本仍可解密；用旧公开默认密钥伪造的令牌被拒（InvalidSignatureError） |
+| 口令 | 种子账号 super/admin/user 口令轮换 | 新口令与库内哈希匹配、旧口令 123456 被拒 |
+| 策略 | 生产 CORS 不再回落通配；FORWARDED_ALLOW_IPS 收敛为应用网段；DEMO_ENABLE 显式化 | 恶意 Origin 无许可头；容器内环境变量实测 |
+| 前端 | 5 条 P0（生产构建开关、令牌刷新、上传路径、WS/开发地址） | type-check×2、build:prod、build:h5 均 exit 0；产物第一方 console 0 命中；H5 内 localhost:5180 0 命中 |
+| 后端 | 业务异常按语义返回（客户端 4xx / 内部故障 500）；调度器 exec 默认关闭；代码生成按上下文转义 | ruff 全过、pytest 47 passed；AST 级对抗载荷无法注入；线上验证码过期由 500 变 400 |
+| 后端（复核未通过，整改中） | 代码生成注入面**未真正关闭**：`column_type` 未安全化即进入代码位置 `mapped_column({{ sqlalchemy_type }})` | 独立复核 t12 = needs_revision；队长复现 `varchar(100)); import app.config.setting as _s; ... #` 原样拼入 → 自动跟进 t13（修复）/t14（复审） |
+
+### 9.2 仍未处理（需后续立项或产品决策）
+
+| 项 | 说明 |
+| --- | --- |
+| 会话失效机制 | 停用/删除/改密/撤权后旧会话仍有效（最长 7 天）——需应用侧改造 |
+| 数据权限注入 | `CRUDBase` 的删除/清空/改状态路径未注入数据权限 |
+| 需求规格错位 | 文档声称的 SaaS 多租户在代码中零实现 |
+| Web i18n 与通知枚举 | 85/101 页面未接入 i18n；通知状态枚举与后端语义冲突 |
+| 测试覆盖与夹具 | 夹具掩盖缺陷、迁移链路 0 覆盖（CI 已建立，但用例仍需补） |
+| 移动端其它缺陷 | `alova.ts:115-119` 请求头写成 `ContentType`（缺连字符），修正需回归上传/表单/JSON 三类请求 |
+| 密钥残留 | 旧数据库口令与 OPENAI_API_KEY 仍存在于 git 历史，建议按已泄露处理并重新签发 |
+
+### 9.3 本轮产生的回滚资产
+
+- 镜像：`backend:prev`（上一版）、`nginx:rollback-1.25`
+- 配置备份：`docker-compose.yaml.bak-*`、`nginx.conf.bak-*`、`.env.bak-*`
+- 静态成品备份：`backups/{web,app-h5}-<时间戳>`（每类保留 5 份）
+- 种子账号新口令：服务器 `/root/.fa-seed-passwords`（600，登录后请修改并删除）
