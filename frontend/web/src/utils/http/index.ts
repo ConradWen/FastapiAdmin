@@ -94,20 +94,78 @@ export class HttpError extends Error {
   }
 }
 
-const getErrorMessage = (status: number): string => {
-  const errorMap: Record<number, string> = {
-    [ApiStatus.unauthorized]: "httpMsg.unauthorized",
-    [ApiStatus.forbidden]: "httpMsg.forbidden",
-    [ApiStatus.notFound]: "httpMsg.notFound",
-    [ApiStatus.methodNotAllowed]: "httpMsg.methodNotAllowed",
-    [ApiStatus.requestTimeout]: "httpMsg.requestTimeout",
-    [ApiStatus.internalServerError]: "httpMsg.internalServerError",
-    [ApiStatus.badGateway]: "httpMsg.badGateway",
-    [ApiStatus.serviceUnavailable]: "httpMsg.serviceUnavailable",
-    [ApiStatus.gatewayTimeout]: "httpMsg.gatewayTimeout",
-  };
+/**
+ * HTTP 状态码 → 兜底文案 key。
+ *
+ * 这是**兜底**映射：只在后端没有返回 `msg` 时才使用。
+ * （后端业务码已收敛为单一事实来源，`RET.code → HTTP status`，所以前端不再按业务码
+ * 挑选文案，详情见下方响应拦截器的「业务错误」分支。）
+ *
+ * 显式收录 400 → 通用「请求失败」：旧实现在业务码未命中白名单时统一走 else 分支显示
+ * 「请求失败」，收录后这条路径的文案与旧行为保持一致。
+ * 未收录的状态码（409/422/429…）同样退化为通用「请求失败」，比「服务器内部错误」更准确。
+ */
+const STATUS_MESSAGE_KEYS: Record<number, string> = {
+  [ApiStatus.error]: "httpMsg.requestFailed",
+  [ApiStatus.unauthorized]: "httpMsg.unauthorized",
+  [ApiStatus.forbidden]: "httpMsg.forbidden",
+  [ApiStatus.notFound]: "httpMsg.notFound",
+  [ApiStatus.methodNotAllowed]: "httpMsg.methodNotAllowed",
+  [ApiStatus.requestTimeout]: "httpMsg.requestTimeout",
+  [ApiStatus.internalServerError]: "httpMsg.internalServerError",
+  [ApiStatus.badGateway]: "httpMsg.badGateway",
+  [ApiStatus.serviceUnavailable]: "httpMsg.serviceUnavailable",
+  [ApiStatus.gatewayTimeout]: "httpMsg.gatewayTimeout",
+};
 
-  return $t(errorMap[status] || "httpMsg.internalServerError");
+/** 状态码兜底文案（未收录的状态码退化为通用「请求失败」） */
+const getErrorMessage = (status: number): string =>
+  $t(STATUS_MESSAGE_KEYS[status] || "httpMsg.requestFailed");
+
+/**
+ * 业务码兜底文案（仅用于后端未返回 `msg` 的情况）。
+ * 未知业务码返回 `undefined`，让调用方继续按 HTTP 状态码回退。
+ */
+const getCodeFallbackMessage = (code?: number): string | undefined => {
+  switch (code) {
+    case ResultEnum.ERROR:
+      return $t("httpMsg.requestFailed");
+    case ResultEnum.EXCEPTION:
+      return $t("httpMsg.internalServerError");
+    case ResultEnum.UNAUTHORIZED:
+      return $t("httpMsg.unauthorized");
+    default:
+      return undefined;
+  }
+};
+
+/**
+ * 从 Blob 错误体里读取后端 msg（文件下载失败场景）。
+ *
+ * `responseType: "blob"` 时，后端返回的 JSON 错误体也会被包成 Blob，所以这里主动解析一次：
+ * - 能解析出对象且 `code` 是非成功业务码 → 返回其后端 `msg`（错误码已收敛为单一事实来源，
+ *   不再只认 `ERROR(1)`/`EXCEPTION(-1)`，4500/404/4090 等同样能取到诊断信息）；
+ * - 有业务码但没 msg → 返回原有业务码兜底文案（保留 1/-1 的旧口径）；
+ * - 解析不出结构化错误体（真正的二进制内容 / 空内容 / 下载中断 / 非 JSON）→ 返回 `undefined`，
+ *   由调用方按 HTTP 状态码兜底。
+ *
+ * 本函数保证不抛异常：任何异常都只记录日志并返回 `undefined`。
+ */
+const readBlobErrorMessage = async (blob: Blob): Promise<string | undefined> => {
+  try {
+    const text = await new Response(blob).text();
+    if (!text.trim()) return undefined;
+
+    const jsonData = JSON.parse(text) as ApiResponse | null;
+    if (!jsonData || typeof jsonData.code !== "number" || jsonData.code === ResultEnum.SUCCESS) {
+      return undefined;
+    }
+
+    return jsonData.msg || getCodeFallbackMessage(jsonData.code);
+  } catch (error) {
+    console.error("[下载错误体解析失败]", error);
+    return undefined;
+  }
 };
 
 export function handleError(error: AxiosError<ApiResponse>): never {
@@ -117,7 +175,6 @@ export function handleError(error: AxiosError<ApiResponse>): never {
   }
 
   const statusCode = error.response?.status;
-  const errorMessage = error.response?.data?.msg || error.message;
   const requestConfig = error.config;
 
   if (!error.response) {
@@ -127,9 +184,11 @@ export function handleError(error: AxiosError<ApiResponse>): never {
     });
   }
 
-  const message = statusCode
-    ? getErrorMessage(statusCode)
-    : errorMessage || $t("httpMsg.requestFailed");
+  // 与响应拦截器同口径：后端 msg 优先（保留其诊断信息），缺失时再按状态码兜底
+  const message =
+    error.response.data?.msg ||
+    (statusCode ? getErrorMessage(statusCode) : "") ||
+    $t("httpMsg.requestFailed");
   throw new HttpError(message, statusCode || ApiStatus.error, {
     data: error.response.data,
     url: requestConfig?.url,
@@ -283,30 +342,23 @@ request.interceptors.response.use(
     }
 
     const data = error.response?.data;
+    const status = error.response.status;
 
     // ── Blob 响应错误（文件下载场景） ──
-    if (error.response?.config.responseType === "blob" && error.response.data instanceof Blob) {
-      try {
-        const text = await new Response(error.response.data).text();
-        const jsonData: ApiResponse = JSON.parse(text);
-
-        if (jsonData.code === ResultEnum.ERROR) {
-          ElMessage.error(jsonData.msg || $t("httpMsg.requestFailed"));
-          return Promise.reject(new Error(jsonData.msg || $t("httpMsg.requestFailed")));
-        } else if (jsonData.code === ResultEnum.EXCEPTION) {
-          ElMessage.error(jsonData.msg || $t("httpMsg.internalServerError"));
-          return Promise.reject(new Error(jsonData.msg || $t("httpMsg.internalServerError")));
-        }
-      } catch (e) {
-        console.error("请求异常:", e);
-        ElMessage.error($t("httpMsg.requestFailed"));
-        return Promise.reject(new Error($t("httpMsg.requestFailed")));
+    // 下载失败时后端返回的是 JSON 错误体，但 responseType=blob 让这里只能拿到 Blob，
+    // 因此主动解析一次，使下载场景也能优先展示后端 msg（与下方业务错误分支同口径）。
+    // 例外：HTTP 401 必须留给下面的「静默续期」，不能被这里的 msg 短路。
+    if (status !== 401 && error.response.config.responseType === "blob" && data instanceof Blob) {
+      const blobMessage = await readBlobErrorMessage(data);
+      if (blobMessage) {
+        ElMessage.error(blobMessage);
+        return Promise.reject(new HttpError(blobMessage, status || ApiStatus.error));
       }
+      // 拿不到结构化错误体（真正的二进制内容 / 空内容 / 下载中断）：
+      // 不抛额外异常，继续走下面的状态码兜底
     }
 
     // ── 鉴权错误（401 / TOKEN_EXPIRED）：静默续期 ──
-    const status = error.response.status;
-
     if (status === 401 || data?.code === ResultEnum.TOKEN_EXPIRED) {
       const config = error.config as InternalAxiosRequestConfig | undefined;
 
@@ -357,32 +409,31 @@ request.interceptors.response.use(
       }
     }
 
-    // ── 业务错误（按 code 分类） ──
+    // ── 无权限（403）：保持既有分支与文案优先级不变 ──
     if (status === 403) {
       ElMessage.error(data?.msg || $t("httpMsg.forbidden"));
       return Promise.reject(
         new HttpError(data?.msg || $t("httpMsg.forbidden"), ApiStatus.forbidden)
       );
     }
-    if (data?.code === ResultEnum.ERROR) {
-      ElMessage.error(data.msg || $t("httpMsg.requestFailed"));
-      return Promise.reject(
-        new HttpError(data.msg || $t("httpMsg.requestFailed"), ApiStatus.error)
-      );
-    } else if (data?.code === ResultEnum.UNAUTHORIZED) {
-      ElMessage.error(data.msg || $t("httpMsg.unauthorized"));
-      return Promise.reject(
-        new HttpError(data.msg || $t("httpMsg.unauthorized"), ApiStatus.unauthorized)
-      );
-    } else if (data?.code === ResultEnum.EXCEPTION) {
-      ElMessage.error(data.msg || $t("httpMsg.internalServerError"));
-      return Promise.reject(
-        new HttpError(data.msg || $t("httpMsg.internalServerError"), ApiStatus.error)
-      );
-    } else {
-      ElMessage.error($t("httpMsg.requestFailed"));
-      return Promise.reject(new Error($t("httpMsg.requestFailed")));
-    }
+
+    // ── 业务错误 ──
+    // 后端业务码与 HTTP 状态码已收敛为单一事实来源（RET.code → status），前端不再按
+    // 业务码白名单挑选文案：只要后端给了 msg 就优先展示（保留其诊断信息，如
+    // 「分页查询失败: 连接已断开」），缺失时才按「业务码 → 状态码 → 通用」回退。
+    const message =
+      data?.msg ||
+      getCodeFallbackMessage(data?.code) ||
+      (status ? getErrorMessage(status) : "") ||
+      $t("httpMsg.requestFailed");
+
+    ElMessage.error(message);
+    return Promise.reject(
+      new HttpError(
+        message,
+        data?.code === ResultEnum.UNAUTHORIZED ? ApiStatus.unauthorized : status || ApiStatus.error
+      )
+    );
   }
 );
 
