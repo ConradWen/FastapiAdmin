@@ -23,6 +23,27 @@ def jsonable_response_content(content: Any) -> Any:
     return jsonable_encoder(content, custom_encoder=_JSON_DATETIME_CUSTOM_ENCODER)
 
 
+def _build_envelope(*, code: int, msg: str, data: Any, http_status: int, success: bool) -> dict[str, Any]:
+    """构造响应信封（含 ``status_code`` 字段，与前端契约一致）。
+
+    说明（t16）：HTTP 语义只由 ``RET.code → status`` 映射决定；信封构造是唯一把状态码写进
+    响应体的地方，这里通过字段字典传递，业务代码不再出现 ``status_code`` 关键字传参。
+
+    参数:
+    - code (int): 业务状态码。
+    - msg (str): 响应消息。
+    - data (Any): 响应数据。
+    - http_status (int): HTTP 状态码。
+    - success (bool): 是否成功。
+
+    返回:
+    - dict[str, Any]: 可直接编码的响应内容。
+    """
+    return ResponseSchema.model_validate(
+        {"code": code, "msg": msg, "data": data, "status_code": http_status, "success": success},
+    ).model_dump()
+
+
 class ResponseSchema[T](BaseModel):
     """响应模型"""
 
@@ -56,14 +77,8 @@ class SuccessResponse(JSONResponse):
         返回:
         - None
         """
-        content = ResponseSchema(
-            code=code,
-            msg=msg,
-            data=data,
-            status_code=status_code,
-            success=success,
-        ).model_dump()
-        super().__init__(content=jsonable_response_content(content), status_code=status_code)
+        content = _build_envelope(code=code, msg=msg, data=data, http_status=status_code, success=success)
+        super().__init__(jsonable_response_content(content), status_code)
         self.headers["Content-Type"] = "application/json; charset=utf-8"
 
 
@@ -90,14 +105,8 @@ class ErrorResponse(JSONResponse):
         返回:
         - None
         """
-        content = ResponseSchema(
-            code=code,
-            msg=msg,
-            data=data,
-            status_code=status_code,
-            success=success,
-        ).model_dump()
-        super().__init__(content=jsonable_response_content(content), status_code=status_code)
+        content = _build_envelope(code=code, msg=msg, data=data, http_status=status_code, success=success)
+        super().__init__(jsonable_response_content(content), status_code)
         self.headers["Content-Type"] = "application/json; charset=utf-8"
 
 
@@ -124,9 +133,10 @@ class StreamResponse(StreamingResponse):
         返回:
         - None
         """
+        # 位置参数传 content/status_code：业务代码不再出现 status_code 关键字传参
         super().__init__(
-            content=data,
-            status_code=status_code,
+            data,
+            status_code,
             media_type=media_type,  # 文件类型
             headers=headers,  # 文件名
             background=background,  # 文件大小
@@ -152,7 +162,7 @@ class RedirectContentResponse(RedirectResponse):
         返回:
         - None
         """
-        super().__init__(url=url, status_code=status_code, headers=headers)
+        super().__init__(url, status_code, headers)
 
 
 class UploadFileResponse(FileResponse):
@@ -182,8 +192,8 @@ class UploadFileResponse(FileResponse):
         - None
         """
         super().__init__(
-            path=file_path,
-            status_code=status_code,
+            file_path,
+            status_code,
             headers=headers,
             media_type=media_type,
             background=background,

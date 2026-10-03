@@ -122,7 +122,7 @@ class CustomHTTPSRedirectMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if request.url.scheme != "https" and request.headers.get("X-Forwarded-Proto") != "https":
             url = request.url.replace(scheme="https")
-            return RedirectResponse(url, status_code=301)
+            return RedirectResponse(url, 301)
         return await call_next(request)
 
 

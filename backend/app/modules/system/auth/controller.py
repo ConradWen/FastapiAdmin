@@ -104,7 +104,7 @@ async def oauth_login_redirect_controller(
         provider=provider,
         redirect_uri=redirect_uri,
     )
-    return RedirectContentResponse(url=url, status_code=302)
+    return RedirectContentResponse(url, 302)
 
 
 @AuthRouter.get("/oauth/{provider}/callback", summary="第三方OAuth回调", include_in_schema=False)
@@ -125,7 +125,7 @@ async def oauth_callback_controller(
         code=code,
         state=state,
     )
-    return RedirectContentResponse(url=url, status_code=302)
+    return RedirectContentResponse(url, 302)
 
 
 # =================================================== #

@@ -76,11 +76,12 @@ def encrypt_password(plain: str | None) -> str:
 
 
 def decrypt_password(cipher: str | None) -> str:
-    """密文 → 明文密码。空值原样返回空串，解不开时抛业务异常。"""
-    try:
-        return CryptoUtil.decrypt(cipher)
-    except CustomException as e:
-        raise CustomException(msg=f"存储源密码解密失败：{e!s}")
+    """密文 → 明文密码。空值原样返回空串。
+
+    解密失败（密钥变更/数据损坏）由 ``CryptoUtil.decrypt`` 抛 ``RuntimeError``，
+    交由全局异常处理器映射为 5xx（t19：不在业务代码里包装意外异常，细节只进日志）。
+    """
+    return CryptoUtil.decrypt(cipher)
 
 
 # 文件系统类协议与对象存储类协议的划分：仅用于文档说明与配置元数据，
@@ -322,7 +323,8 @@ class BaseStorageAdapter(ABC):
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 list(pool.map(_run, tasks))
         if errors:
-            raise CustomException(msg=f"批量上传失败 {len(errors)}/{len(tasks)} 个文件，首个错误: {errors[0]!s}")
+            logger.error(f"批量上传失败 {len(errors)}/{len(tasks)} 个文件，首个错误: {errors[0]!s}")
+            raise RuntimeError(f"批量上传失败 {len(errors)}/{len(tasks)} 个文件，首个错误: {errors[0]!s}")
         return len(tasks)
 
     def _sync_download_dir(self, remote_dir: str, local_dir: str, concurrency: int) -> int:
@@ -352,7 +354,8 @@ class BaseStorageAdapter(ABC):
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 list(pool.map(_run, tasks))
         if errors:
-            raise CustomException(msg=f"批量下载失败 {len(errors)}/{len(tasks)} 个文件，首个错误: {errors[0]!s}")
+            logger.error(f"批量下载失败 {len(errors)}/{len(tasks)} 个文件，首个错误: {errors[0]!s}")
+            raise RuntimeError(f"批量下载失败 {len(errors)}/{len(tasks)} 个文件，首个错误: {errors[0]!s}")
         return len(tasks)
 
     @staticmethod

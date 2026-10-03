@@ -81,7 +81,10 @@ async def auto_register_login_user(
         existing = await UserCRUD(auth, db).get(username=username)
         if existing:
             return existing
-        raise CustomException(msg=fail_msg)
+        # 原始异常被吞掉（可能是 DB/唯一约束/驱动等未知服务端故障）：按 500 返回，
+        # 避免监控把内部故障误判为客户端错误；确实的客户端问题由 UserService 的 CustomException 透传
+        logger.exception('自动注册第三方登录用户失败')
+        raise
     user = await UserCRUD(auth, db).get(username=username)
     if not user:
         raise CustomException(msg=fail_msg)

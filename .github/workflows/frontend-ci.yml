@@ -1,0 +1,73 @@
+name: frontend
+
+on:
+  push:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  web:
+    name: web（类型检查 + 单元测试）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/web/pnpm-lock.yaml
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      # src/types/{auto-imports,components}.d.ts 由 unplugin-* 在 vite 运行时生成，
+      # 仓库按惯例不跟踪（见 frontend/web/.gitignore）。干净检出下 vue-tsc 会因缺少
+      # 自动导入声明报大量 TS2304（ref/h/onMounted/ElMessage…），因此必须先跑一次构建
+      # 生成这些声明，再执行类型检查。顺带把生产构建纳入 CI 校验。
+      - name: 生产构建（生成自动导入声明）
+        run: pnpm run build:prod
+
+      - name: 类型检查
+        run: pnpm run type-check
+
+      - name: 单元测试
+        run: pnpm run test
+
+  app:
+    name: app（类型检查）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/app/pnpm-lock.yaml
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 类型检查
+        run: pnpm run type-check

@@ -74,3 +74,5 @@ AGENTS.md
 .codebuddy
 .agent
 .workbuddy
+# AgentTeams 协作运行期状态（本地，不入库）
+.agent-teams/

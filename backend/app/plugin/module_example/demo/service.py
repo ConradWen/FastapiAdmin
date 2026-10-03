@@ -262,7 +262,7 @@ class DemoService:
 
         except Exception as e:
             logger.error(f"批量导入示例失败: {e!s}")
-            raise CustomException(msg=f"导入失败: {e!s}") from e
+            raise
 
     @staticmethod
     def import_template_download() -> bytes:

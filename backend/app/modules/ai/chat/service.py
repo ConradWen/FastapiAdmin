@@ -10,7 +10,7 @@ from agno.run.team import TeamRunOutput
 from agno.session.team import TeamSession
 from redis.asyncio import Redis
 
-from app.common.enums import RedisInitKeyConfig
+from app.common.enums import RET, RedisInitKeyConfig
 from app.core.base_schema import AuthSchema, PageResultSchema
 from app.core.exceptions import CustomException
 from app.core.logger import logger
@@ -277,7 +277,7 @@ class ChatService:
         crud = ChatSessionCRUD(self.auth)
         session = await crud.get_by_id(session_id=session_id)
         if not session:
-            raise CustomException(msg="会话不存在", code=10404, status_code=404)
+            raise CustomException(msg="会话不存在", code=RET.NOT_FOUND.code)
         return ChatSessionOutSchema.model_validate(_format_session_data(session))
 
     async def create(self, data: ChatSessionCreateSchema) -> ChatSessionOutSchema:
@@ -311,7 +311,7 @@ class ChatService:
     async def update(self, session_id: str, data: ChatSessionUpdateSchema) -> None:
         crud = ChatSessionCRUD(self.auth)
         if not await crud.get_by_id(session_id=session_id):
-            raise CustomException(msg="会话不存在", code=10404, status_code=404)
+            raise CustomException(msg="会话不存在", code=RET.NOT_FOUND.code)
         await crud.rename(session_id=session_id, data=data)
 
     async def delete(self, session_ids: list[str]) -> None:
@@ -320,7 +320,7 @@ class ChatService:
         crud = ChatSessionCRUD(self.auth)
         for session_id in session_ids:
             if not await crud.get_by_id(session_id=session_id):
-                raise CustomException(msg=f"会话不存在: {session_id}", code=10404, status_code=404)
+                raise CustomException(msg=f"会话不存在: {session_id}", code=RET.NOT_FOUND.code)
         await crud.delete(session_ids=session_ids)
 
 
@@ -518,15 +518,15 @@ class AiModelConfigService:
     async def update(self, config_id: str, config: AiModelConfigSchema) -> dict[str, Any]:
         result = await update_user_model_config(self.redis, self._user_id, config_id, config)
         if result is None:
-            raise CustomException(msg="模型配置不存在", code=10404, status_code=404)
+            raise CustomException(msg="模型配置不存在", code=RET.NOT_FOUND.code)
         return result
 
     async def delete(self, config_id: str) -> None:
         ok = await delete_user_model_config(self.redis, self._user_id, config_id)
         if not ok:
-            raise CustomException(msg="模型配置不存在", code=10404, status_code=404)
+            raise CustomException(msg="模型配置不存在", code=RET.NOT_FOUND.code)
 
     async def set_active(self, config_id: str) -> None:
         ok = await set_active_model_config(self.redis, self._user_id, config_id)
         if not ok:
-            raise CustomException(msg="模型配置不存在", code=10404, status_code=404)
+            raise CustomException(msg="模型配置不存在", code=RET.NOT_FOUND.code)

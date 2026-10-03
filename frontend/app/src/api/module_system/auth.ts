@@ -28,13 +28,21 @@ const AuthAPI = {
 
   /**
    * 刷新令牌
-   * @param body 刷新令牌请求体
+   *
+   * 后端 `POST /system/auth/token/refresh` 的入参是 `Annotated[str, Body(...)]`
+   * （`backend/app/modules/system/auth/controller.py:57`），即请求体必须是一个
+   * **JSON 字符串**（形如 `"eyJ..."`），而不是 `{ "refresh_token": "..." }` 对象，
+   * 否则 FastAPI 解析失败返回 422。因此这里与 `logout` 一致，先
+   * `JSON.stringify` 让请求体成为合法 JSON 字符串（uni.request 对字符串原样发送）。
+   * web 端 `frontend/web/src/api/module_system/auth.ts` 同名方法即直接发字符串。
+   *
+   * @param refreshToken 刷新令牌原文
    * @returns 新的访问令牌
    */
-  refreshToken(body: RefreshToekenBody): Promise<LoginResult> {
+  refreshToken(refreshToken: string): Promise<LoginResult> {
     // authRole: 'refreshToken'：让 http 层 401 处理器识别刷新请求，自身 401 时不触发刷新逻辑（避免死循环）
     // silent：刷新失败由 http 层统一跳转登录，无需全局 toast
-    return http.Post(`${AUTH_BASE_URL}/token/refresh`, body, {
+    return http.Post(`${AUTH_BASE_URL}/token/refresh`, JSON.stringify(refreshToken), {
       meta: { ignoreAuth: true, silent: true, authRole: 'refreshToken' },
     })
   },
@@ -129,11 +137,6 @@ export interface LoginFormData {
   captcha?: string
   remember?: boolean
   login_type?: string
-}
-
-/** 刷新令牌请求体 */
-export interface RefreshToekenBody {
-  refresh_token: string
 }
 
 /** JWT 响应 */

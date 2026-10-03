@@ -1,0 +1,7 @@
+# 优化项：静态资源缓存 + nginx 版本固定。撤销：删除本文件并重建 nginx。
+services:
+  nginx:
+    image: nginx:${NGINX_TAG:-1.27-alpine}
+    volumes:
+      - ./nginx/cache-headers.inc:/etc/nginx/cache-headers.inc:ro
+      - ./nginx/acme:/usr/share/nginx/html/acme:ro

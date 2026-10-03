@@ -111,18 +111,18 @@
           class="crud-dialog-art-form"
         />
           {% if table.sub %}
-          <ElDivider>{{ table.sub_table.function_name }}列表</ElDivider>
+          <ElDivider>{{ table.sub_table.function_name | vue_label }}列表</ElDivider>
           <div class="sub-table-section">
             <div class="flex justify-between items-center mb-2">
               <ElButton size="small" type="primary" @click="addSubRow">
-                新增{{ table.sub_table.function_name }}
+                新增{{ table.sub_table.function_name | vue_label }}
               </ElButton>
             </div>
             <ElTable :data="subTableData" size="small" border>
               {% for col in table.sub_table.columns %}
               {% if col.is_list and col.column_name != table.sub_table.pk_column.column_name %}
               {% set col_comment = col.column_comment if col.column_comment else col.column_name %}
-              <ElTableColumn prop="{{ col.column_name }}" label="{{ col_comment }}" />
+              <ElTableColumn prop="{{ col.column_name }}" label="{{ col_comment | html_attr }}" />
               {% endif %}
               {% endfor %}
               <ElTableColumn label="操作" width="80" fixed="right">
@@ -141,7 +141,7 @@
     <FaImportDialog
       v-model="importVisible"
       :content-config="importContentConfig"
-      default-template-file-name="{{ module_name }}_import_template.xlsx"
+      default-template-file-name="{{ module_name | html_attr }}_import_template.xlsx"
       @upload="handleCrudImportUpload"
     />
 

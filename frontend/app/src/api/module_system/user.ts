@@ -19,13 +19,23 @@ const UserAPI = {
   /**
    * 当前用户头像上传
    *
+   * 路径必须是 `/common/file/upload`：后端 `FileRouter` 自身前缀是 `/file`，但挂在
+   * `/common` 域下（`backend/app/api/v1/routers.py:63`），配合 `VITE_APP_BASE_API=/api/v1`
+   * 得到 `/api/v1/common/file/upload`；`upload_type` 是 Query 参数、文件字段名约定为 `file`
+   * （`backend/app/modules/common/file/controller.py:18-31`）。
+   * 旧实现写成 `/file/upload`，后端无此路由 → 404。
+   *
+   * 走统一 http 层（`requestType: 'upload'`）：请求头由 http 层 `beforeRequest` 统一注入
+   * `Authorization`（该接口要求 `module_common:file:upload` 权限），失败复用全局错误处理，
+   * 调用方无需自己拼 URL 与请求头。
+   *
    * @param body 上传参数
    * @param body.filePath 本地临时文件路径（uni.chooseImage 选择结果）
    * @param body.name 上传字段名，后端约定为 file
-   * @returns uni.uploadFile 成功回调（statusCode + data 响应体字符串，需调用方解析）
+   * @returns uni.uploadFile 成功回调结果（statusCode + data 响应体字符串，需调用方解析）
    */
-  uploadCurrentUserAvatar(body: { filePath: string, name?: string }): Promise<{ statusCode: number, data: string }> {
-    return http.Post('/file/upload?upload_type=avatar', body, { requestType: 'upload' })
+  uploadCurrentUserAvatar(body: { filePath: string, name?: string }): Promise<UniApp.UploadFileSuccessCallbackResult> {
+    return http.Post('/common/file/upload?upload_type=avatar', body, { requestType: 'upload' })
   },
 
   /**

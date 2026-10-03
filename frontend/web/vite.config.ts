@@ -25,7 +25,16 @@ const __APP_INFO__ = {
 export default ({ mode }: { mode: string }) => {
   const root = process.cwd();
   const env = loadEnv(mode, root);
-  const isProduction = mode === "prod";
+  /**
+   * 生产分支判定。
+   *
+   * `vite build`（`package.json` 的 `build`）默认 mode 为 `"production"`，
+   * `build:prod` 显式传 `--mode production`；仓库中不存在 `--mode prod` 的脚本。
+   * 历史写法 `mode === "prod"` 与任何实际脚本都不匹配，恒为 false，导致
+   * minify / terserOptions.drop_console / gzip-brotli 预压缩 / 剔除 vue-devtools 全部失效。
+   * 这里同时接受 `"production"` 与 `"prod"`，兼容两种模式名。
+   */
+  const isProduction = mode === "production" || mode === "prod";
 
   return defineConfig({
     define: {
@@ -73,7 +82,11 @@ export default ({ mode }: { mode: string }) => {
               pure_funcs: ["console.log", "console.info"], // 移除指定的函数调用
             },
             format: {
-              comments: true, // 删除注释
+              // `comments: true` 是「保留全部注释」，与这里想表达的「删除注释」相反：
+              // 它会把第三方与自身源码里的 JSDoc（含示例代码中的 console.log(...)）原样带进产物。
+              // 用 terser 默认的 "some"：删除普通注释，仅保留 @license/@preserve/! 开头的
+              // 版权注释（MIT 等许可证要求保留版权声明，不能一律删干净）。
+              comments: "some",
             },
           }
         : {},
