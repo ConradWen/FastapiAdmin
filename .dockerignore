@@ -15,7 +15,12 @@ __pycache__
 # 虚拟环境
 venv
 .venv
+# 环境变量文件：必须排除所有真实密钥文件（.env 只能匹配到名为 .env 的文件，
+# 匹配不到 .env.prod / .env.dev / .env.test —— 它们含真实口令与 API Key）
 .env
+**/.env
+**/.env.*
+!**/.env.example
 
 # 编辑器/IDE
 .vscode

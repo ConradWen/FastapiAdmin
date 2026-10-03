@@ -20,7 +20,7 @@ services:
       MYSQL_USER: "${MYSQL_USER:-fastapiadmin}"
       MYSQL_PASSWORD: "${MYSQL_PASSWORD:?错误: 请设置 MYSQL_PASSWORD 环境变量}"
     ports:
-      - "${MYSQL_PORT:-3306}:3306"
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - /etc/localtime:/etc/localtime:ro
@@ -56,7 +56,7 @@ services:
     environment:
       TZ: "Asia/Shanghai"
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
       # 挂载自定义 redis.conf（若存在则覆盖默认配置）
@@ -115,10 +115,22 @@ services:
       # 日志级别
       LOGGER_LEVEL: "${LOGGER_LEVEL:-INFO}"
       # 信任反向代理（nginx）传来的 X-Forwarded-Proto/For：否则 prod 的
-      # HTTPSRedirectMiddleware 会把 https 请求误判为 http 造成 301 循环
-      FORWARDED_ALLOW_IPS: "*"
+      # HTTPSRedirectMiddleware 会把 https 请求误判为 http 造成 301 循环。
+      # 只信任应用网络子网（默认 10.255.178.0/24），不要用 "*"——否则客户端可伪造
+      # X-Forwarded-For 绕过登录限流与来源 IP 记录。
+      FORWARDED_ALLOW_IPS: "${FORWARDED_ALLOW_IPS:-10.255.178.0/24}"
+      # 令牌签名密钥与数据加密密钥（必须显式提供，禁止使用源码默认值）
+      SECRET_KEY: "${SECRET_KEY:?错误: 请设置 SECRET_KEY 环境变量（openssl rand -hex 32）}"
+      DATA_ENCRYPTION_KEY: "${DATA_ENCRYPTION_KEY:-}"
+      # 轮换前的旧主密钥（逗号分隔），仅用于解密历史密文
+      DATA_ENCRYPTION_OLD_KEYS: "${DATA_ENCRYPTION_OLD_KEYS:-}"
+      # 生产跨域白名单（逗号分隔）。未配置时应用不再回落通配
+      PROD_CORS_ORIGINS: "${PROD_CORS_ORIGINS:-}"
+      # 演示模式：为 true 时禁止写操作。当前线上为 true，如需可写请设为 false
+      DEMO_ENABLE: "${DEMO_ENABLE:-true}"
     ports:
-      - "${BACKEND_PORT:-8001}:8001"
+      # 仅绑定本机：数据面不对公网开放，容器之间经 app_network 互联
+      - "127.0.0.1:${BACKEND_PORT:-8001}:8001"
     volumes:
       # ── 开发热更新（可选）─────────────────────
       # 取消注释将宿主机代码覆盖容器内代码。生产环境保持注释，

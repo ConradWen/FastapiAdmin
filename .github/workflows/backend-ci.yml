@@ -1,0 +1,36 @@
+name: backend
+
+on:
+  push:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: 安装依赖（含 sqlite 与 mysql 驱动；测试用 sqlite + fakeredis）
+        run: uv sync --extra sqlite --extra mysql
+
+      - name: 代码检查（ruff）
+        run: uv run ruff check
+
+      - name: 单元测试（pytest）
+        run: uv run pytest -q
