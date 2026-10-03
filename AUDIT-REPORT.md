@@ -190,7 +190,8 @@
 | Web i18n 与通知枚举 | 85/101 页面未接入 i18n；通知状态枚举与后端语义冲突 |
 | 测试覆盖与夹具 | 夹具掩盖缺陷、迁移链路 0 覆盖（CI 已建立，但用例仍需补） |
 | 移动端其它缺陷 | `alova.ts:115-119` 请求头写成 `ContentType`（缺连字符），修正需回归上传/表单/JSON 三类请求 |
-| 密钥残留 | 旧数据库口令与 OPENAI_API_KEY 仍存在于 git 历史，建议按已泄露处理并重新签发 |
+| 凭据轮换与镜像卫生 | ① 生产口令整体轮换：MySQL 应用用户 / MySQL root / Redis（旧值实测被拒：`ERROR 1045`、`WRONGPASS`）；② 镜像不再携带任何口令：`deploy-artifacts.sh` 构建时剔除 `DATABASE_PASSWORD / REDIS_PASSWORD / SECRET_KEY / DATA_ENCRYPTION_KEY` 等键（审计 B3 根治），重建后镜像内口令行命中 0 条，应用改由 compose 注入口令且 `db_status/redis_status=1`；③ 本地 `backend/env/.env.prod` 中泄露值清空并改 600 权限 | 旧口令拒绝测试、新口令容器内连接测试、镜像内容扫描、四端 200、容器全 healthy |
+| 公开仓库历史暴露（需用户侧吊销） | 仓库为 **public**，历史中真实出现过：**OpenAI API Key（35 字符 `sk-…`）**、旧 MySQL/Redis/root 口令、旧 `SECRET_KEY`、旧自签名 TLS 私钥；其余 `PAYMENT_* / EMAIL_PASSWORD / DINGDING_SECRET / MONGO_DB_PASSWORD / POSTGRESQL_PASSWORD` 等仅出现在 `.example` 占位文件 | 已消除：DB/Redis/root 口令与 `SECRET_KEY`/`DATA_ENCRYPTION_KEY` 本轮轮换（历史值即失效）；线上证书与历史私钥**不同**（指纹比对）。**待用户处理：到 OpenAI 控制台吊销该 Key**（第三方无法代办）；是否用 `git-filter-repo` 清洗历史见 §9.2 |
 | 对外口径（异常统一后的取舍） | 存储「测试连接」密钥环损坏、上传/下载失败、OAuth 渠道未配置、Redis 同步失败等已由具体原因变为通用 5xx 文案（细节只在日志）。若希望管理员在界面看到可操作原因，正确做法是为这些场景定义**业务码**，而不是回到「包装意外异常」 |
 | 仍可能外泄的出口 | `ValueError` 全局处理器返回 `msg=str(exc)`；建议改为通用文案 + 日志，或让我们的校验统一抛 `CustomException` |
 | 静默吞异常（既有） | 48 处「记录日志但不 raise」的 best-effort 处理器（redis_crud、ap_scheduler、middlewares、discover 等），属审计「静默吞异常」主线，建议单独排一轮 |
@@ -231,7 +232,7 @@
 
 **收尾后仍需人工处理（不阻塞上线）**
 
-1. 轮换 `OPENAI_API_KEY` 与旧数据库口令（已进历史/镜像层，按已泄露处理）。
-2. 审计报告内含旧密钥的少量特征（前 4 字符与长度）用于佐证；若仓库将转为公开，建议先按上述轮换再考虑是否脱敏。
+1. **吊销旧 OpenAI API Key**：仓库是 public，`sk-…`（35 字符）确实出现在 `backend/env/.env.prod` 的历史提交中。线上环境从未使用它（容器 env 与该键均为空、新镜像已不含任何密钥），所以风险只在于该 Key 在 OpenAI 侧可能仍有效。请到 <https://platform.openai.com/api-keys> 吊销；如需 AI 功能再签发新 Key 并只写入服务器 `.env`。
+2. **是否清洗 git 历史**：`git-filter-repo` 可把历史中的 `.env*` 与旧证书整体抹除，但会重写所有 SHA（需 force-push `dev` 与 `master`，影响既有克隆与 PR 引用，且 gitee 镜像需同步）。由于相关口令已轮换、Key 将吊销，**建议以「吊销 + 轮换」为准，清洗作为可选项**；若仓库要转为对外开源，则建议执行清洗。
 3. §9.2 中的产品/架构决策项（会话失效、数据权限注入、多租户规格、i18n、移动端 `ContentType`）。
 
