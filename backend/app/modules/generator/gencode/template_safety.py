@@ -28,6 +28,7 @@
 import ast
 import keyword
 import re
+from collections.abc import Iterable
 
 from app.common.constant import GenConstant
 
@@ -305,11 +306,10 @@ _TYPE_BASE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_ ]*")
 # 基名里需要剔除的修饰词（它们不属于类型名，参与查表会导致 miss）
 _BASE_MODIFIER_RE = re.compile(r"\s+(unsigned|zerofill)$", re.IGNORECASE)
 
-# 映射常量值的白名单（类型名只能取自这里，杜绝自由文本进产物）
-_SQLALCHEMY_TYPE_WHITELIST: frozenset[str] = frozenset(GenConstant.DB_TO_SQLALCHEMY.values())
-
-# Boolean 由 MySQL tinyint(1) 规则显式产出（常量表中未必有该值），显式纳入白名单
-_SQLALCHEMY_TYPE_WHITELIST = _SQLALCHEMY_TYPE_WHITELIST | {"Boolean"}
+# 映射常量值的白名单（类型名只能取自这里，杜绝自由文本进产物）。
+# Boolean 由 MySQL tinyint(1) 规则显式产出（常量表中未必有该值），此处一次成型，
+# 避免对全大写常量二次赋值（类型检查会报 reportConstantRedefinition，也是不必要的可变性）。
+_SQLALCHEMY_TYPE_WHITELIST: frozenset[str] = frozenset(GenConstant.DB_TO_SQLALCHEMY.values()) | {"Boolean"}
 
 
 def _lookup_sqlalchemy_type(base: str) -> str:
@@ -338,7 +338,11 @@ def normalize_column_type(column_type: object) -> str:
     """
     text = "" if column_type is None else str(column_type).strip()
     if _ENUM_SET_RE.match(text):
-        return _TYPE_BASE_RE.match(text).group(0).strip()  # type: ignore[union-attr]
+        # 不假定 _TYPE_BASE_RE 一定命中：None 安全处理，命中不了就原样返回，
+        # 交给 is_valid_column_type 的形状白名单继续拦截（不在这里静默放行）。
+        base_match = _TYPE_BASE_RE.match(text)
+        if base_match is not None:
+            return base_match.group(0).strip()
     return text
 
 
@@ -589,7 +593,7 @@ def assert_text_structure(
     reference: str,
     *,
     sentinel: str,
-    dynamic_values: object = (),
+    dynamic_values: Iterable[str] = (),
     filename: str = "<generated>",
 ) -> None:
     """``.vue`` / ``.ts`` / ``.toml`` 产物的粗粒度结构护栏。

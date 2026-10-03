@@ -327,9 +327,7 @@ def _add_job_with_trigger(
         raise ValueError("任务代码块不能为空")
     # 可调度性判定（单一事实来源）：builtin: 引用走白名单、不经 exec，因此**开关关闭时也允许注册**；
     # 只有"原始代码块"才会被 SCHEDULER_ALLOW_CODE_EXEC=False 拦住，并在提示里给出 builtin 替代写法。
-    schedulable, reason = SchedulerUtil.describe_schedulability(code_block)
-    if not schedulable:
-        raise CustomException(msg=reason)
+    SchedulerUtil.require_schedulable(code_block)
 
     jobstore = job_info.jobstore or "default"
     executor = job_info.executor or "threadpool"
@@ -416,9 +414,7 @@ def run_node_once(node: NodeModel) -> str:
     if not node.func or not node.func.strip():
         raise ValueError("任务代码块不能为空")
     # 手动执行同样按可调度性判定：builtin 引用可直接执行；原始代码块在开关关闭时给出替代写法
-    schedulable, reason = SchedulerUtil.describe_schedulability(node.func)
-    if not schedulable:
-        raise CustomException(msg=reason)
+    SchedulerUtil.require_schedulable(node.func)
     temp_job_id = f"{node.id}{_MANUAL_JOB_PREFIX}{datetime.now():%Y%m%d%H%M%S}"
     trigger = DateTrigger(run_date=datetime.now() + timedelta(seconds=0.1), timezone="Asia/Shanghai")
     _add_job_with_trigger(node, trigger, job_id_override=temp_job_id, name_suffix=" - 手动执行")

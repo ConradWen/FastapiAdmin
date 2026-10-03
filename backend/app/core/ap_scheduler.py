@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 
 from app.config.setting import settings
 from app.core.database import engine
+from app.core.exceptions import CustomException
 from app.core.logger import logger
 
 # 任务状态常量（与 task_job.status 注释保持一致：0待执行 1执行中 2成功 3失败）
@@ -591,6 +592,24 @@ class SchedulerUtil:
                 "请改用内置函数型任务——把 func 改为 builtin:<模块名>[.<函数名>]（不经 exec，不受该开关限制）"
             )
         return True, None
+
+    @classmethod
+    def require_schedulable(cls, code_block: str | None) -> None:
+        """不可调度时抛出业务异常；可调度时直接返回。
+
+        把「取判定结果 + 抛异常」收敛到一处：``describe_schedulability`` 的 reason 是
+        ``str | None``（可调度时为 None），调用点直接 ``CustomException(msg=reason)`` 会
+        传入 None 让客户端收到空文案；这里统一兜底，也避免每个调用点各写一份兜底文案。
+
+        参数:
+        - code_block (str | None): 节点的 func 字段。
+
+        异常:
+        - CustomException: 当前不可调度时抛出（含可操作原因）。
+        """
+        schedulable, reason = cls.describe_schedulability(code_block)
+        if not schedulable:
+            raise CustomException(msg=reason or "当前任务不可调度，请检查任务配置")
 
     @classmethod
     def job_code_block(cls, job: Job | None) -> str | None:

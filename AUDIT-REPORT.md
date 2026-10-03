@@ -177,6 +177,8 @@
 | 后端（全局兜底修正） | SQLAlchemyError 非完整性错误由 400 改为 503（连接）/500（其它），文案不再拼 `exc_type` | 读码 + 探针实测 409/503/503/500/500 |
 | 前端（错误文案） | 错误提示改为「后端 msg 优先 → 业务码兜底 → 状态码兜底 → 通用」，去掉按 code 白名单取文案的耦合（含 Blob 下载分支；401 排除在解析外以不影响静默续期） | type-check exit 0；vitest 41 用例（含 500+4500 与 404+404 文案断言）；成功下载分支零改动 |
 | 存储适配器（类型检查暴露的运行时缺陷） | ① OSS：`Client.uploader` 是**方法**，原写法 `self.client.uploader.upload_file(...)` 在绑定方法上取属性 → 运行时 AttributeError（OSS 上传必失败）；② SFTP/FTP：`config.host` 可空却直接传给要求 `str` 的 `connect(hostname/host)` | ① 改为 `self.client.uploader().upload_file(...)`（已按 SDK 签名核对 part_size/parallel_num）；② 补主机校验，缺主机时返回 400 业务异常；basedpyright 这三个文件由 4 error → 0；运行时探针：缺主机拦截、配主机放行 |
+| 类型检查校准（新增 `backend/pyrightconfig.json`） | 仓库此前无 pyright 配置，basedpyright 走自身默认：`app/` 下 247 errors / 3799 warnings，143 条是 `reportMissingTypeArgument` 泛型注解类噪音，掩盖真缺陷 | `typeCheckingMode: basic` + 显式保留能抓 bug 的规则为 error + tests/ 用 `executionEnvironments` 单独放宽 → **0 errors**；做了红绿验证：合成 `str | None` 传参、`MethodType` 属性误用、Optional 成员访问三类仍全部报 error |
+| 类型检查暴露的两处真缺陷（我们上一轮引入） | ① `template_safety._SQLALCHEMY_TYPE_WHITELIST` 对全大写常量二次赋值；② 同文件 `normalize_column_type` 假定 `_TYPE_BASE_RE` 必命中（用 `# type: ignore` 盖住，None 时 `.group()` 会崩）；③ `node/service.py` 两处 `CustomException(msg=reason)` 中 `reason` 为 `str | None` → 客户端可能收到空文案 | ① 一次成型；② 改 None 安全并去掉 type-ignore；③ 新增 `SchedulerUtil.require_schedulable()` 收敛「判定 + 抛异常 + 兜底文案」，两个调用点改为一行 |
 
 ### 9.2 仍未处理（需后续立项或产品决策）
 
