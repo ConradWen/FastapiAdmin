@@ -123,7 +123,40 @@ ss -tlnp | grep docker-proxy      # 确认对外只有 80/443
 `pydantic_settings.exceptions.SettingsError: error parsing value for field "XXX" from source "EnvSettingsSource"`，
 就是该字段的取值格式与类型不匹配。
 
-## 7. 已知遗留问题
+## 7. 凭据轮换（生产）
+
+轮换对象：MySQL 应用用户 / MySQL root / Redis。三者都通过 `docker/.env` 注入，且
+**镜像内不得包含任何口令**（`deploy-artifacts.sh` 在构建上下文里剔除
+`DATABASE_PASSWORD / REDIS_PASSWORD / SECRET_KEY / DATA_ENCRYPTION_KEY` 等键，
+仅保留主机名、端口等非敏感项——审计 B3 的根治）。
+
+标准步骤（约 1 分钟中断窗口，顺序不可颠倒）：
+
+```bash
+cd /home/FastapiAdmin/docker
+cp -a .env ".env.bak-rotate-$(date +%Y%m%d-%H%M%S)"   # 先备份，便于回滚
+
+# 1) 改数据库口令（用 stdin 传 SQL，避免口令出现在命令行历史/ps）
+NEW=$(openssl rand -base64 36 | tr -d '/+=' | cut -c1-30)
+docker exec -i -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql mysql -uroot <<SQL
+ALTER USER 'fastapiadmin'@'%' IDENTIFIED BY '$NEW';
+FLUSH PRIVILEGES;
+SQL
+
+# 2) 同步写入 .env（键名：MYSQL_PASSWORD）
+# 3) 重建引用该值的容器：mysql → redis → backend
+#    注意：mysql/redis 的健康检查命令内插了 .env 值，必须一并重建，否则健康检查会一直失败
+docker compose up -d --force-recreate mysql && sleep 20
+docker compose up -d --force-recreate redis
+docker compose up -d --force-recreate backend
+
+# 4) 验证：旧口令必须被拒（1045 / WRONGPASS），新口令可用，健康检查 db_status/redis_status = 1
+```
+
+排查提示：`docker exec -i` 会让容器内进程读走脚本自身的 stdin（若脚本经 `bash -s` 传入，
+后续步骤会被吞掉）——务必加 `</dev/null` 或改用 `-e` 直传。
+
+## 8. 已知遗留问题
 
 安全与质量债的完整清单见 `AUDIT-REPORT.md` 与各分报告（`backend/audit-*.md`、`frontend/audit-*.md`、`docker/audit-deploy.md`）。当前仍待处理的高优先级项：
 

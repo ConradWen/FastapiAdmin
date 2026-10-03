@@ -146,8 +146,9 @@ deploy_backend() {
   rm -rf /tmp/fa-ctx/requirements && mkdir -p /tmp/fa-ctx/requirements
   cp -R backend/requirements/. /tmp/fa-ctx/requirements/
 
-  # 镜像内的 .env.prod 只是兜底：数据库/Redis 真实地址由 compose 运行时注入。
-  # 这里抹掉本地私网地址与所有密钥，避免把开发凭据烤进镜像。
+  # 镜像内的 .env.prod 只是兜底：数据库/Redis 真实地址与口令由 compose 运行时注入。
+  # 这里抹掉本地私网地址与所有密钥/口令，避免把任何凭据烤进镜像层
+  # （审计 B3：旧镜像里曾烘进真实 DATABASE_PASSWORD / REDIS_PASSWORD）。
   python3 - "$db" <<'PY'
 import re, pathlib, sys
 db = sys.argv[1]
@@ -156,12 +157,20 @@ force = {"DATABASE_HOST": "localhost", "REDIS_HOST": "localhost"}
 if db == "postgres":
     force.update({"DATABASE_TYPE": "postgres", "DATABASE_PORT": "5432", "DATABASE_USER": "postgres"})
 drop_prefixes = ("OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_MODEL")
+# 口令类：运行时全部由 compose 注入，镜像内保留会成为泄露面
+drop_keys = {
+    "DATABASE_PASSWORD", "REDIS_PASSWORD",
+    "SECRET_KEY", "DATA_ENCRYPTION_KEY", "DATA_ENCRYPTION_OLD_KEYS",
+    "MYSQL_PASSWORD", "MYSQL_ROOT_PASSWORD",
+}
 out = []
 for line in p.read_text().splitlines():
     m = re.match(r"^(\s*)([A-Z_]+)(\s*=\s*)(.*)$", line)
     if m and m.group(2) in force:
         out.append(f"{m.group(1)}{m.group(2)}{m.group(3)}{force[m.group(2)]}")
     elif m and m.group(2).startswith(drop_prefixes):
+        continue
+    elif m and m.group(2) in drop_keys:
         continue
     else:
         out.append(line)
