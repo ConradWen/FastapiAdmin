@@ -16,6 +16,14 @@ def _load() -> dict:
     return load_model_family(PACKAGE, manifest_name=MANIFEST)
 
 
+def test_ddl_column_names_are_snake_case() -> None:
+    """容器冒烟抓出：camelCase 不加引号进 PG 折叠为小写——生成列名必须 snake_case（PG/ORM 约定）。"""
+    ddl = generate_ddl(_load())
+    assert "book_no" in ddl
+    assert "category_code" in ddl
+    assert "borrow_no" in ddl
+
+
 def test_same_package_generates_identical_ddl() -> None:
     """D1.06 确定性铁律：同包 N 次生成字节级一致。"""
     family = _load()

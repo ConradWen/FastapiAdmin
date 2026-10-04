@@ -30,7 +30,7 @@ def list_{alias[0].lower() + alias[1:]}():
     dsn = os.environ.get("DATABASE_URI", DEFAULT_DSN)
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute("SELECT to_jsonb(t) AS row FROM {table} t WHERE deleted = false LIMIT 100")
-        return {{"table": "{table}", "rows": [r["row"] for (r,) in cur.fetchall()]}}
+        return {{"table": "{table}", "rows": [row for (row,) in cur.fetchall()]}}
 '''
         )
 

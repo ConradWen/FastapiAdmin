@@ -63,7 +63,7 @@ def _table_ddl(agg: dict[str, Any]) -> str:
 
 
 def _column_ddl(attr: dict[str, Any]) -> str:
-    name = str(attr["name"])
+    name = _camel_to_snake(str(attr["name"]))
     sem_type = str(attr["type"])
     if sem_type not in _PG_TYPES:
         raise ModelStructureError(f"属性 {name}: type={sem_type} 无 PG 方言映射（D1.02）")
@@ -91,3 +91,13 @@ def _table_name(alias: str) -> str:
     """alias（PascalCase）→ snake_case 表名，统一加 t_ 前缀。"""
     snake = "".join(f"_{c.lower()}" if c.isupper() else c for c in alias).lstrip("_")
     return f"t_{snake}"
+
+
+def _camel_to_snake(name: str) -> str:
+    """属性名 camelCase → 列名 snake_case（PG 不加引号会折叠小写——统一 ORM 约定）。"""
+    out: list[str] = []
+    for i, ch in enumerate(name):
+        if ch.isupper() and i > 0 and (not name[i - 1].isupper() or (i + 1 < len(name) and name[i + 1].islower())):
+            out.append("_")
+        out.append(ch.lower())
+    return "".join(out)

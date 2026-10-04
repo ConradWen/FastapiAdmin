@@ -101,6 +101,24 @@ services:
       - backend
     networks:
       - metastella-net
+
+  # 生成物冒烟应用（工单 07b：P-13 端到端"确定性生成→容器运行"首证）
+  # 产物落 .scratch/tmp/library_smoke_app（生成器可复算；本服务只消费）
+  library-smoke:
+    build:
+      context: ../../.scratch/tmp/library_smoke_app
+    image: metastella-library-smoke:dev
+    container_name: metastella-library-smoke
+    restart: unless-stopped
+    environment:
+      DATABASE_URI: postgresql://metastella:metastella_dev@postgres:5432/metastella
+    ports:
+      - "127.0.0.1:58002:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - metastella-net
 volumes:
   pgdata:
     # 收编旧壳仓时期卷（数据不迁移零风险；ADR-0037⑦钉版纪律的既有开发数据）
