@@ -1,0 +1,36 @@
+"""model_type 注册表与分派（§0.2 九类；最小集标注 D13.01）。"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class ModelTypeSpec:
+    code: str
+    minimal_set: bool  # D13.01：最小集六件；扩展族（ME/M7/MI/MM）为 W3 起成员
+    validate: Callable[[dict], None] | None
+
+
+def _not_implemented(doc: dict) -> None:  # noqa: ARG001 — 占位：后续工单逐章落地
+    raise NotImplementedError("该章 validator 尚未落地（工单 02~05 推进）")
+
+
+REGISTRY: dict[str, ModelTypeSpec] = {
+    spec.code: spec
+    for spec in (
+        ModelTypeSpec("OBJECT", True, _not_implemented),     # M1（工单 02）
+        ModelTypeSpec("BEHAVIOR", True, _not_implemented),   # M2
+        ModelTypeSpec("RULE", True, _not_implemented),       # M3
+        ModelTypeSpec("ACTOR", True, _not_implemented),      # M5
+        ModelTypeSpec("FLOW", True, _not_implemented),       # M6
+        ModelTypeSpec("UI", True, _not_implemented),         # MU
+        ModelTypeSpec("EVENT", False, _not_implemented),     # ME（扩展族）
+        ModelTypeSpec("REPORT", False, _not_implemented),    # M7（扩展族）
+        ModelTypeSpec("MASTER_DATA_MAPPING", False, _not_implemented),  # MM（扩展族）
+    )
+}
+
+MINIMAL_SET = {code for code, spec in REGISTRY.items() if spec.minimal_set}
+assert MINIMAL_SET == {"OBJECT", "BEHAVIOR", "RULE", "ACTOR", "FLOW", "UI"}
