@@ -9,9 +9,11 @@ from .errors import (
     MissingSchemaVersionError,
     ModelFamilyInconsistencyError,
     ModelStructureError,
+    SemanticPackageError,
     UnknownModelTypeError,
 )
 from .loader import load_model_family, load_model_file
+from .publish import ModelPackageAlreadyPublishedError, compute_package_fingerprint, publish_package
 from .registry import MINIMAL_SET
 from .schema_version import extract_schema_version
 from .validator import validate_model
@@ -21,10 +23,14 @@ __all__ = [
     "load_model_file",
     "extract_schema_version",
     "validate_model",
+    "compute_package_fingerprint",
+    "publish_package",
     "MINIMAL_SET",
     "BadSchemaVersionError",
     "MissingSchemaVersionError",
     "ModelFamilyInconsistencyError",
     "ModelStructureError",
+    "SemanticPackageError",
+    "ModelPackageAlreadyPublishedError",
     "UnknownModelTypeError",
 ]

@@ -25,3 +25,7 @@ class UnknownModelTypeError(SemanticSchemaError):
 
 class ModelStructureError(SemanticSchemaError):
     """各 §章结构级错误基类（第二章起细化为具体拦截）。"""
+
+
+class SemanticPackageError(SemanticSchemaError):
+    """语义包发布状态机错误基类（D11.02/F-3）。"""
