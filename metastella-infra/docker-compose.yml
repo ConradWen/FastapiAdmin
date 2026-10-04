@@ -1,5 +1,6 @@
-# 本地开发用 PostgreSQL + pgvector
+# 本地开发用 PostgreSQL + pgvector + SeaweedFS
 # 依 ADR-0031（平台自身存储）与 ADR-0034（生成物数据库）：PG 强制非可选
+# SeaweedFS（ADR-0040②：对象存储首期必装，G-5 制品快照归档；NFR-9 例外登记在案）
 #
 # 端口用 55432 而非 5432，避免与 sksj 项目（5433/6380）等冲突。
 # 隔离铁律（2026-10-04 用户）：不碰其他项目容器/端口/数据。
@@ -21,5 +22,23 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+  seaweedfs:
+    image: chrislusf/seaweedfs:3.67
+    container_name: metastella-seaweedfs
+    # 一体化 server：master+volume+filer+s3（S3 API=8333，G-5 快照归档面）
+    command: "server -dir=/data -master.volumeSizeLimitMB=1024 -volume.port=8080 -s3 -s3.port=8333"
+    ports:
+      - "55833:9333"
+      - "55880:8080"
+      - "55844:8333"
+    volumes:
+      - seaweeddata:/data
 volumes:
   pgdata:
+    # 收编旧壳仓时期卷（数据不迁移零风险；ADR-0037⑦钉版纪律的既有开发数据）
+    external: true
+    name: metastella-platform_pgdata
+  seaweeddata:
+networks:
+  metastella-net:
+    driver: bridge
