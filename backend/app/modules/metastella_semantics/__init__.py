@@ -4,6 +4,7 @@
 边界：本模块不侵入上游任何文件目录（新链独立，R-8 约束）；AI 不进编译核心（规范 §12.2）。
 """
 
+from .ddl_generator import generate_ddl
 from .errors import (
     BadSchemaVersionError,
     MissingSchemaVersionError,
@@ -25,6 +26,7 @@ __all__ = [
     "validate_model",
     "compute_package_fingerprint",
     "publish_package",
+    "generate_ddl",
     "MINIMAL_SET",
     "BadSchemaVersionError",
     "MissingSchemaVersionError",

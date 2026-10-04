@@ -40,6 +40,14 @@ aggregates:
         type: Enum
         required: true
         enumValues: [在架, 借出, 停借]
+      - name: price
+        label: 定价
+        type: Money
+        required: true
+      - name: createdAt
+        label: 入藏日期
+        type: DateTime
+        required: true
     entities: []
     valueObjects:
       - name: 图书封面
