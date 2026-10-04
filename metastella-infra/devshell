@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# 起一个已净化的项目交互 shell（E-5）。用法：./devshell [cmd...]
+cd "$(dirname "$0")" || exit 1
+if [ $# -gt 0 ]; then
+  bash --rcfile <(cat ~/.bashrc; echo 'source '"$PWD"'/env.sh') -ic "$*"
+else
+  exec bash --rcfile <(cat ~/.bashrc; echo 'source '"$PWD"'/env.sh') -i
+fi

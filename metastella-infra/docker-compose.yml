@@ -1,0 +1,25 @@
+# 本地开发用 PostgreSQL + pgvector
+# 依 ADR-0031（平台自身存储）与 ADR-0034（生成物数据库）：PG 强制非可选
+#
+# 端口用 55432 而非 5432，避免与 sksj 项目（5433/6380）等冲突。
+# 隔离铁律（2026-10-04 用户）：不碰其他项目容器/端口/数据。
+# 启动： docker compose up -d
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: metastella-pg
+    environment:
+      POSTGRES_USER: metastella
+      POSTGRES_PASSWORD: metastella_dev
+      POSTGRES_DB: metastella
+    ports:
+      - "55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U metastella -d metastella"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  pgdata:
