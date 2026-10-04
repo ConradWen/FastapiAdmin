@@ -15,8 +15,8 @@ class ModelTypeSpec:
     validate: Callable[[dict], None] | None
 
 
-def _not_implemented(doc: dict) -> None:  # noqa: ARG001 — 占位：后续工单 03~05 逐章落地
-    raise NotImplementedError("该章 validator 尚未落地（工单 03~05 推进）")
+def _not_implemented(doc: dict) -> None:  # noqa: ARG001 — 占位：M2~MU 深度校验随后续批次逐章落地
+    raise NotImplementedError("该章 validator 尚未落地（M2~MU 深度校验批次补）")
 
 
 REGISTRY: dict[str, ModelTypeSpec] = {
@@ -35,4 +35,7 @@ REGISTRY: dict[str, ModelTypeSpec] = {
 }
 
 MINIMAL_SET = {code for code, spec in REGISTRY.items() if spec.minimal_set}
-assert MINIMAL_SET == {"OBJECT", "BEHAVIOR", "RULE", "ACTOR", "FLOW", "UI"}
+# §0.2 表列九类 model_type（MI 连接器属规范 §9 口径、九/十类歧义待用户裁定，暂不占码位——台账 P-13 登记）
+if MINIMAL_SET != {"OBJECT", "BEHAVIOR", "RULE", "ACTOR", "FLOW", "UI"}:
+    msg = f"最小集六件漂移（D13.01）: {sorted(MINIMAL_SET)}"
+    raise ValueError(msg)

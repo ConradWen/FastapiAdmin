@@ -1,4 +1,4 @@
-"""语义包发布状态机（D11.02 指纹 / D11.03 版本演进 / F-3 内容不可变）。"""
+"""语义包发布状态机（D11.02 指纹 / D11.03 版本演进 / F-3 不可变 / §12 发布前必跑校验）。"""
 
 from __future__ import annotations
 
@@ -7,7 +7,8 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from .errors import SemanticPackageError
+from .errors import ModelStructureError, SemanticPackageError, SemanticSchemaError
+from .validator import validate_model
 
 
 class ModelPackageAlreadyPublishedError(SemanticPackageError):
@@ -15,16 +16,19 @@ class ModelPackageAlreadyPublishedError(SemanticPackageError):
 
 
 def canonical_json(obj: Any) -> str:
-    """canonical_json：键排序+紧凑分隔符+UTF-8（D11.02 指纹的确定性序列化面）。"""
-    return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    """canonical_json：键排序+紧凑分隔+UTF-8（D11.02 指纹的确定性序列化面）。
+
+    YAML 原生类型（date/datetime 等）经 default=str 规范化；键序比较失败等
+    不可序列化输入抛 SemanticSchemaError（error 级），不裸穿 TypeError。
+    """
+    try:
+        return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    except TypeError as exc:
+        raise SemanticSchemaError(f"语义包内容不可确定性序列化（D11.02）: {exc}") from exc
 
 
 def compute_package_fingerprint(family: dict[str, Any]) -> str:
-    """语义包指纹 = canonical_json(全模型文件) 的 SHA-256（D11.02）。
-
-    family 形如 {model_type: doc}；按 model_type 键排序后整体序列化——
-    键序/插入序无关，同内容必同指纹。
-    """
+    """语义包指纹 = canonical_json(全模型文件) 的 SHA-256（D11.02；manifest 非模型文件不入指纹面）。"""
     return hashlib.sha256(canonical_json(family).encode("utf-8")).hexdigest()
 
 
@@ -32,13 +36,26 @@ def publish_package(
     family: dict[str, Any],
     *,
     package_name: str,
-    schema_version: str,
     published_by: str = "system",
 ) -> dict[str, Any]:
-    """草稿→发布状态机：指纹钉死+快照留痕；同指纹重复发布拒绝（F-3）。
+    """草稿→发布状态机：**先过 §12 校验门禁**，再指纹钉死+快照留痕（F-3 不可变）。
 
-    返回发布记录（JSON 可序列化，可落 PG 发布台账）。
+    - 任何模型结构错误（ModelStructureError 等 SemanticSchemaError 子类）→ 阻断发布；
+    - 占位章 validator 未落地（NotImplementedError）→ 不阻断，但发布记录显式留痕
+      validators_pending（诚实边界，M2~MU 深度校验随后续批次补）；
+    - schema_version 从族内容取（D11.01 族一致），不作调用方参数——杜绝台账失真。
     """
+    pending: list[str] = []
+    for model_type in sorted(family):
+        try:
+            validate_model(family[model_type])
+        except NotImplementedError:
+            pending.append(model_type)
+
+    versions = {doc.get("schema_version") for doc in family.values()}
+    if len(versions) != 1 or not versions.pop():
+        raise ModelStructureError("发布前族内 schema_version 必须一致且存在（D11.01）")
+
     fingerprint = compute_package_fingerprint(family)
     existing = _REGISTRY.get((package_name, fingerprint))
     if existing is not None:
@@ -49,16 +66,23 @@ def publish_package(
 
     record: dict[str, Any] = {
         "package_name": package_name,
-        "schema_version": schema_version,
+        "schema_version": _family_version(family),
         "fingerprint": fingerprint,
         "status": "PUBLISHED",
         "published_at": datetime.now(UTC).isoformat(),
         "published_by": published_by,
         "model_types": sorted(family),
-        "models": dict.fromkeys(family),  # 快照占位：后续工单挂生成链产物
+        "validators_pending": pending,
+        "models": dict.fromkeys(family),
     }
     _REGISTRY[(package_name, fingerprint)] = record
     return record
+
+
+def _family_version(family: dict[str, Any]) -> str:
+    for doc in family.values():
+        return str(doc["schema_version"])
+    raise ModelStructureError("空族不可发布")
 
 
 def _reset_registry_for_tests() -> None:

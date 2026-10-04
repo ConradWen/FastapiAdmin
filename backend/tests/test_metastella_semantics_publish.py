@@ -59,7 +59,7 @@ def test_fingerprint_key_order_insensitive() -> None:
 
 def test_publish_draft_returns_fingerprint_and_snapshot() -> None:
     family = _load()
-    record = publish_package(family, package_name="library_smoke", schema_version="1.0.0")
+    record = publish_package(family, package_name="library_smoke")
     assert record["status"] == "PUBLISHED"
     assert record["fingerprint"] == compute_package_fingerprint(family)
     assert record["schema_version"] == "1.0.0"
@@ -69,24 +69,24 @@ def test_publish_draft_returns_fingerprint_and_snapshot() -> None:
 
 def test_publish_is_immutable_same_fingerprint_rejected() -> None:
     family = _load()
-    record = publish_package(family, package_name="library_smoke", schema_version="1.0.0")
+    record = publish_package(family, package_name="library_smoke")
     with pytest.raises(ModelPackageAlreadyPublishedError, match=record["fingerprint"]):
-        publish_package(family, package_name="library_smoke", schema_version="1.0.0")
+        publish_package(family, package_name="library_smoke")
 
 
-def test_new_minor_version_allowed_after_publish(tmp_path: Path) -> None:
-    """D11.03：minor=向后兼容新增——新指纹+新版本可发布（旧记录不可变仍在）。"""
+def test_new_content_republish_allowed_after_publish(tmp_path: Path) -> None:
+    """内容变化→新指纹可再发布（F-3 不可变指同指纹，非同包名永久锁死）。"""
     family = _load()
-    publish_package(family, package_name="library_smoke", schema_version="1.0.0")
+    publish_package(family, package_name="library_smoke")
     family["OBJECT"]["domain"] = "图书管理（增补）"
-    record2 = publish_package(family, package_name="library_smoke", schema_version="1.0.1")
+    record2 = publish_package(family, package_name="library_smoke")
     assert record2["status"] == "PUBLISHED"
     assert record2["fingerprint"] != compute_package_fingerprint(_load())
 
 
 def test_publish_record_json_serializable(tmp_path: Path) -> None:
     family = _load()
-    record = publish_package(family, package_name="library_smoke", schema_version="1.0.0")
+    record = publish_package(family, package_name="library_smoke")
     dumped = json.dumps(record, ensure_ascii=False)
     loaded = json.loads(dumped)
     assert loaded["fingerprint"] == record["fingerprint"]

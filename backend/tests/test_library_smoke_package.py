@@ -52,7 +52,6 @@ def test_library_smoke_m1_covers_dictionary_and_reference_and_invariant() -> Non
     """M1 必须覆盖三类元素实测：字典引用/聚合引用/不变量（工单 02 validator 的真实语料命中）。"""
     family = load_model_family(PACKAGE, manifest_name=MANIFEST)
     m1 = family["OBJECT"]
-    root = m1["aggregates"][0]
     types_used = {attr["type"] for agg in m1["aggregates"] for attr in agg["attributes"]}
     assert "DictionaryRef" in types_used
     assert "AggregateRootRef" in types_used

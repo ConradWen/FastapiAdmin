@@ -13,7 +13,8 @@ behaviors:
         description: 图书必须处于在架状态
     postconditions:
       - description: 图书状态改为借出
-    appliedRules: []
+    appliedRules:
+      - RULE-BORROW-LIMIT
     requiredPermissions:
       - code: PERM-LIBRARY-BORROW
   - id: Book_returnBack
@@ -26,7 +27,8 @@ behaviors:
         description: 图书必须处于借出状态
     postconditions:
       - description: 图书状态改回在架
-    appliedRules: []
+    appliedRules:
+      - RULE-OVERDUE-FLAG
     requiredPermissions:
       - code: PERM-LIBRARY-BORROW
   - id: Reader_register
@@ -40,6 +42,16 @@ behaviors:
     appliedRules: []
     requiredPermissions:
       - code: PERM-LIBRARY-READER-MGMT
+  - id: Book_query
+    name: 查询图书
+    ownerEntity: Book
+    behaviorType: QUERY
+    triggerType: USER_ACTION
+    preconditions: []
+    postconditions: []
+    appliedRules: []
+    requiredPermissions:
+      - code: PERM-LIBRARY-QUERY
   - id: BorrowRecord_queryHistory
     name: 查询借阅历史
     ownerEntity: BorrowRecord

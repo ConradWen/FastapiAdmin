@@ -68,9 +68,23 @@ def _column_ddl(attr: dict[str, Any]) -> str:
     if sem_type not in _PG_TYPES:
         raise ModelStructureError(f"属性 {name}: type={sem_type} 无 PG 方言映射（D1.02）")
     pg_type = _PG_TYPES[sem_type]
-    null_sql = "NOT NULL" if attr.get("required") else "NULL"
-    unique_sql = " UNIQUE" if attr.get("unique") else ""
-    return f"{name} {pg_type} {null_sql}{unique_sql}"
+    parts = [f"{name} {pg_type}", "NOT NULL" if attr.get("required") else "NULL"]
+    if attr.get("unique"):
+        parts.append("UNIQUE")
+    if "defaultValue" in attr:
+        parts.append(f"DEFAULT {_default_sql(attr['defaultValue'])}")
+    return " ".join(parts)
+
+
+def _default_sql(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return "NULL"
+    if isinstance(value, int | float):
+        return str(value)
+    text = str(value).replace("'", "''")
+    return f"'{text}'"
 
 
 def _table_name(alias: str) -> str:

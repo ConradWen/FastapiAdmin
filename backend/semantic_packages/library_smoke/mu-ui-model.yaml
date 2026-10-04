@@ -34,7 +34,7 @@ screens:
     actionPoints:
       - id: AP-BOOK-SEARCH
         name: 搜索图书
-        behaviorRef: BorrowRecord_queryHistory
+        behaviorRef: Book_query
         elementId: 搜索
   - id: SCREEN-BORROW-LIST
     name: 借阅管理

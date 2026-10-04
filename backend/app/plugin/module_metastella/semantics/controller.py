@@ -1,23 +1,26 @@
 """metastella 语义引擎 API 骨架（m2-minset 工单 05b）。
 
-四端点消费 backend/semantic_packages/ 下的语义包；发布用进程内注册表（PG 台账挂 M2 后期）。
+四端点消费 backend/semantic_packages/ 下的语义包；发布判重**单一事实源在引擎层**
+（publish_package 的注册表——控制器不再自判，杜绝双源）。PG 持久化台账挂 M2 中期。
 """
 
 from pathlib import Path
 
+import yaml
 from fastapi import APIRouter
 
 from app.common.enums import RET
 from app.common.response import SuccessResponse
 from app.core.exceptions import CustomException
 from app.modules.metastella_semantics import (
-    ModelStructureError,
+    ModelPackageAlreadyPublishedError,
     compute_package_fingerprint,
     generate_ddl,
     load_model_family,
     publish_package,
     validate_model,
 )
+from app.modules.metastella_semantics.errors import SemanticSchemaError
 
 MetastellaRouter = APIRouter(prefix="/packages", tags=["MetaStella 语义引擎"])
 
@@ -25,7 +28,6 @@ MetastellaRouter = APIRouter(prefix="/packages", tags=["MetaStella 语义引擎"
 # semantic_packages/ 与 app/ 平级（backend/semantic_packages/library_smoke/...）
 PACKAGES_ROOT = Path(__file__).parents[4] / "semantic_packages"
 _MANIFEST = "manifest.yaml"
-_REGISTRY: dict[tuple[str, str], dict] = {}
 
 
 def _load_family_or_404(pkg: str) -> dict:
@@ -35,7 +37,7 @@ def _load_family_or_404(pkg: str) -> dict:
         raise CustomException(msg=f"语义包 {pkg} 不存在", code=RET.NOT_FOUND.code)
     try:
         return load_model_family(pkg_dir, manifest_name=_MANIFEST)
-    except ModelStructureError as exc:
+    except (SemanticSchemaError, FileNotFoundError, yaml.YAMLError) as exc:
         raise CustomException(msg=str(exc), code=RET.UNPROCESSABLE_ENTITY.code) from exc
 
 
@@ -64,7 +66,7 @@ async def post_package_validate_controller(pkg: str):
         except NotImplementedError:
             # 占位章（M2~MU）：结构已注册识别、深度校验未落地——显式留痕，不伪装通过
             pending.append(model_type)
-        except ModelStructureError as exc:
+        except SemanticSchemaError as exc:
             errors.append(f"{model_type}: {exc}")
     return SuccessResponse(
         data={"package": pkg, "valid": not errors, "errors": errors, "validators_pending": pending},
@@ -72,17 +74,15 @@ async def post_package_validate_controller(pkg: str):
     )
 
 
-@MetastellaRouter.post("/{pkg}/publish", summary="发布语义包（指纹钉死，F-3 不可变）")
+@MetastellaRouter.post("/{pkg}/publish", summary="发布语义包（先过校验门禁，指纹钉死 F-3）")
 async def post_package_publish_controller(pkg: str):
     family = _load_family_or_404(pkg)
-    fingerprint = compute_package_fingerprint(family)
-    if (pkg, fingerprint) in _REGISTRY:
-        raise CustomException(
-            msg=f"语义包 {pkg} 指纹 {fingerprint} 已发布（F-3 内容不可变）",
-            code=RET.CONFLICT.code,
-        )
-    record = publish_package(family, package_name=pkg, schema_version="1.0.0")
-    _REGISTRY[(pkg, fingerprint)] = record
+    try:
+        record = publish_package(family, package_name=pkg)
+    except ModelPackageAlreadyPublishedError as exc:
+        raise CustomException(msg=str(exc), code=RET.CONFLICT.code) from exc
+    except SemanticSchemaError as exc:
+        raise CustomException(msg=str(exc), code=RET.UNPROCESSABLE_ENTITY.code) from exc
     return SuccessResponse(data=record, msg="发布成功")
 
 

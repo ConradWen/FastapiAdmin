@@ -282,11 +282,11 @@ def test_concurrency_valid_expansion_passes_d1_04() -> None:
     assert validate_model(doc) is None
 
 
-def test_concurrency_invalid_rejected_d1_04() -> None:
+def test_concurrency_future_value_not_blocked_d1_04() -> None:
+    """评审修复批：D1.04/D11.07 原文「Schema 不拦」——未来策略值不得误杀（撤销误拦截的回归哨）。"""
     doc = valid_object_doc()
     doc["aggregates"][0]["attributes"][0]["concurrency"] = "row_lock"
-    with pytest.raises(ModelStructureError, match="D1.04"):
-        validate_model(doc)
+    assert validate_model(doc) is None
 
 
 def test_loader_validate_flag_dispatches_registry(tmp_path: Path) -> None:

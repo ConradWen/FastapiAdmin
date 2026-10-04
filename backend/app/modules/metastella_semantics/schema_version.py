@@ -21,7 +21,7 @@ def extract_schema_version(doc: dict, source: str) -> str:
     if version is None:
         raise MissingSchemaVersionError(f"{source}: 缺 schema_version 首字段（D11.01）")
     if not isinstance(version, str) or not _SEMVER.match(version):
-        raise BadSchemaVersionError(f"{source}: schema_version={version!r} 非 major.minor.patch（D11.03）")
+        raise BadSchemaVersionError(f"{source}: schema_version={version!r} 非 <major>.<minor>.<patch> 格式（D11.01）")
     return version
 
 

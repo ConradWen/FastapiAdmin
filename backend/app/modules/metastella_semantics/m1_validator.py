@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -24,12 +25,16 @@ _ALLOWED_ATTRIBUTE_TYPES = {
     "AggregateRootRef",
     "DictionaryRef",
 }
-_ALLOWED_CONCURRENCY = {"optimistic_lock"}
+_ALLOWED_CONCURRENCY = {"optimistic_lock"}  # 保留常量供未来实现；D1.04/D11.07：Schema **不拦**并发值
 _ENFORCED_AT = {"ON_CREATE", "ON_UPDATE", "ON_DELETE", "ALWAYS"}
 _ENTITY_CARDINALITY = {"ONE", "ZERO_OR_ONE", "ONE_OR_MORE", "ZERO_OR_MORE"}
 _ASSOCIATION_TYPES = {"REFERENCE", "DEPENDENCY"}
 _ASSOCIATION_CARDINALITY = {"ONE_TO_ONE", "ONE_TO_MANY", "MANY_TO_ONE", "MANY_TO_MANY"}
 _TENANT_ATTRIBUTE_NAMES = {"tenantId", "tenant_id"}
+# 生成器注入/默认列名——M1 属性不得撞名（同名 SQL 列=双列；camelCase 变体由 _CAMEL_NAME_RE 先拒）
+_RESERVED_COLUMN_NAMES = {"id", "tenant_id", "deleted", "created_at", "updated_at"}
+_PASCAL_ALIAS_RE = re.compile(r"^[A-Z][A-Za-z0-9]*$")
+_CAMEL_NAME_RE = re.compile(r"^[a-z][A-Za-z0-9]*$")
 
 
 def validate_object_model(doc: dict[str, Any]) -> None:
@@ -57,7 +62,10 @@ def _build_aggregate_index(aggregates: Sequence[Any]) -> dict[str, dict[str, Any
         aggregate_id = _require_string(aggregate, "id", where)
         name = _require_string(aggregate, "name", where)
         alias = _require_string(aggregate, "alias", where)
+        if not _PASCAL_ALIAS_RE.match(alias):
+            _fail(f"{where}: alias={alias!r} 必须是 PascalCase 标识符（生成物表名/ORM 类名安全）")
         aggregate_type = _require_string(aggregate, "aggregateType", where)
+        _require_optional_bool(aggregate, "tenantScoped", where)
         if aggregate_type != "AGGREGATE_ROOT":
             _fail(f"{where}: aggregateType={aggregate_type!r} 必须是 AGGREGATE_ROOT")
         for key, value in (("id", aggregate_id), ("name", name), ("alias", alias)):
@@ -141,6 +149,7 @@ def _validate_associations(associations: Any, aggregate_index: Mapping[str, Mapp
 
 
 def _validate_tenant_registry(doc: Mapping[str, Any], aggregate_index: Mapping[str, Mapping[str, Any]]) -> None:
+    """D1.03：`tenantScoped: false`（聚合**或实体**）计数与显式豁免登记表全等。"""
     exemptions = doc.get("tenantScopedExemptions", [])
     if not isinstance(exemptions, list):
         _fail("tenantScopedExemptions 必须是列表（D1.03）")
@@ -148,20 +157,29 @@ def _validate_tenant_registry(doc: Mapping[str, Any], aggregate_index: Mapping[s
     registered: set[str] = set()
     for exemption in _iter_mappings(exemptions, "tenantScopedExemptions"):
         aggregate_alias = _require_string(exemption, "aggregateAlias", "租户豁免登记")
-        _require_string(exemption, "reason", f"租户豁免登记 {aggregate_alias}")
-        _require_string(exemption, "nfr5Test", f"租户豁免登记 {aggregate_alias}")
-        if aggregate_alias in registered:
-            _fail(f"租户豁免登记 aggregateAlias 必须唯一: {aggregate_alias}")
-        registered.add(aggregate_alias)
+        entity_alias = exemption.get("entityAlias")
+        if entity_alias is not None and not isinstance(entity_alias, str):
+            _fail("租户豁免登记 entityAlias 必须是字符串")
+        token = aggregate_alias if not entity_alias else f"{aggregate_alias}/{entity_alias}"
+        _require_string(exemption, "reason", f"租户豁免登记 {token}")
+        _require_string(exemption, "nfr5Test", f"租户豁免登记 {token}")
+        if token in registered:
+            _fail(f"租户豁免登记重复: {token}")
+        registered.add(token)
 
-    unscoped = {
-        info["alias"]
-        for info in aggregate_index.values()
-        if info["aggregate"].get("tenantScoped") is False
-    }
+    unscoped: set[str] = set()
+    for info in aggregate_index.values():
+        aggregate = info["aggregate"]
+        if aggregate.get("tenantScoped") is False:
+            unscoped.add(info["alias"])
+        for entity in _iter_mappings(aggregate.get("entities", []), f"聚合 {info['alias']} 的 entities"):
+            _require_optional_bool(entity, "tenantScoped", f"子实体 {entity.get('alias', '?')}")
+            if entity.get("tenantScoped") is False:
+                unscoped.add(f"{info['alias']}/{entity.get('alias')}")
+
     if unscoped != registered:
         _fail(
-            "D1.03: tenantScoped=false 的聚合必须与显式租户豁免登记表完全一致: "
+            "D1.03: tenantScoped=false 的聚合/实体必须与显式租户豁免登记表完全一致: "
             f"未登记={sorted(unscoped - registered)}, 多余登记={sorted(registered - unscoped)}"
         )
 
@@ -217,6 +235,8 @@ def _validate_entity(
 ) -> None:
     name = _require_string(entity, "name", f"{aggregate_where} 的子实体")
     alias = _require_string(entity, "alias", f"{aggregate_where} 的子实体 {name}")
+    if not _PASCAL_ALIAS_RE.match(alias):
+        _fail(f"{aggregate_where} 的子实体 {name}: alias={alias!r} 必须是 PascalCase 标识符")
     local_id = _require_string(entity, "localId", f"子实体 {name}")
     where = f"{aggregate_where} 的子实体 {name}({alias})"
     _require_enum(entity, "cardinality", where, _ENTITY_CARDINALITY)
@@ -239,6 +259,8 @@ def _validate_value_object(
 ) -> None:
     name = _require_string(value_object, "name", f"{aggregate_where} 的值对象")
     alias = _require_string(value_object, "alias", f"{aggregate_where} 的值对象 {name}")
+    if not _PASCAL_ALIAS_RE.match(alias):
+        _fail(f"{aggregate_where} 的值对象 {name}: alias={alias!r} 必须是 PascalCase 标识符")
     where = f"{aggregate_where} 的值对象 {name}({alias})"
     _require_optional_bool(value_object, "immutable", where)
     _require_list(value_object, "attributes", where)
@@ -294,6 +316,10 @@ def _validate_attribute(
 
     if name in _TENANT_ATTRIBUTE_NAMES:
         _fail(f"{attribute_where}: tenant_id 由生成物 ORM 层注入，M1 模型不得显式建模（D1.03）")
+    if not _CAMEL_NAME_RE.match(name):
+        _fail(f"{where} 的属性 {name!r}: name 必须是 camelCase 标识符（生成物列名安全，禁注入面）")
+    if name in _RESERVED_COLUMN_NAMES:
+        _fail(f"{where} 的属性 {name}: 撞生成器注入/默认列名（id/tenant_id/deleted/created_at/updated_at 由生成器持有）")
     if data_type not in _ALLOWED_ATTRIBUTE_TYPES:
         _fail(f"{attribute_where}: type={data_type} 不在 PostgreSQL 方言语义类型集（D1.02）")
     _require_optional_bool(attribute, "required", attribute_where)
@@ -303,10 +329,8 @@ def _validate_attribute(
     if name == "deleted" and data_type != "Boolean":
         _fail(f"{attribute_where}: D1.05 逻辑删除约定要求 deleted 属性类型为 Boolean")
 
-    if "concurrency" in attribute:
-        concurrency = attribute["concurrency"]
-        if concurrency not in _ALLOWED_CONCURRENCY:
-            _fail(f"{attribute_where}: concurrency={concurrency!r} 只允许 optimistic_lock（D1.04）")
+    # D1.04/D11.07（ADR-0038 选项 B）：并发扩展位 Schema **不拦**——未来策略值不得误杀老包；
+    # 首期生成模板忽略该键。_ALLOWED_CONCURRENCY 留给实现期消费。
 
     if data_type == "Enum":
         enum_values = _require_list(attribute, "enumValues", attribute_where)

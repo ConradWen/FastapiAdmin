@@ -44,7 +44,7 @@ aggregates:
         label: 定价
         type: Money
         required: true
-      - name: createdAt
+      - name: listedAt
         label: 入藏日期
         type: DateTime
         required: true

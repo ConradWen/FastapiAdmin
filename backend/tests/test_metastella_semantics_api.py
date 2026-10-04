@@ -8,11 +8,22 @@
 路由前缀按底座 discover 约定：module_metastella → /metastella。
 """
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.exceptions import handle_exception
 from app.plugin.module_metastella.semantics.controller import MetastellaRouter
+
+
+@pytest.fixture(autouse=True)
+def _reset_publish_registry():
+    """发布判重单源在引擎层——逐测试清空，杜绝顺序耦合。"""
+    from app.modules.metastella_semantics.publish import _reset_registry_for_tests
+
+    _reset_registry_for_tests()
+    yield
+    _reset_registry_for_tests()
 
 
 def _client() -> TestClient:
@@ -43,19 +54,18 @@ def test_validate_endpoint_green_for_library_smoke() -> None:
 
 
 def test_publish_endpoint_returns_fingerprint() -> None:
-    from app.modules.metastella_semantics.publish import _reset_registry_for_tests
-
-    _reset_registry_for_tests()
     resp = _client().post("/metastella/packages/library_smoke/publish")
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data["status"] == "PUBLISHED"
+    assert data["schema_version"] == "1.0.0"
     assert len(data["fingerprint"]) == 64
 
 
 def test_publish_endpoint_rejects_republish() -> None:
     client = _client()
-    client.post("/metastella/packages/library_smoke/publish")
+    first = client.post("/metastella/packages/library_smoke/publish")
+    assert first.status_code == 200, first.text
     resp = client.post("/metastella/packages/library_smoke/publish")
     assert resp.status_code == 409
 

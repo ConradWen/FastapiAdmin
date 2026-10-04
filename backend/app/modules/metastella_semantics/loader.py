@@ -49,13 +49,14 @@ def load_model_family(
     """
     d = Path(directory)
     manifest_path = d / manifest_name
-    manifest = _load_yaml(manifest_path)  # 上游样例 manifest.json 本身是 JSON-compatible YAML
+    manifest = _load_yaml(manifest_path)  # manifest 本身是 JSON-compatible YAML
+    manifest_version = extract_schema_version(manifest, manifest_path.name)  # §0.3：每文件首字段
     files = manifest.get("model_files")
     if not isinstance(files, list) or not files:
         raise ModelStructureError(f"{manifest_path.name}: 缺 model_files 声明（族=manifest 全量不可拆）")
 
     family: dict[str, Any] = {}
-    versions: dict[str, str] = {}
+    versions: dict[str, str] = {manifest_name: manifest_version}
     for fname in files:
         doc, model_type, version = load_model_file(d / str(fname), validate=validate)
         if model_type in family:
