@@ -1,0 +1,52 @@
+# M2 行为模型 · 图书管理冒烟考题
+schema_version: "1.0.0"
+model_type: BEHAVIOR
+
+behaviors:
+  - id: Book_borrowOut
+    name: 借出图书
+    ownerEntity: Book
+    behaviorType: COMMAND
+    triggerType: USER_ACTION
+    preconditions:
+      - expression: "status == '在架'"
+        description: 图书必须处于在架状态
+    postconditions:
+      - description: 图书状态改为借出
+    appliedRules: []
+    requiredPermissions:
+      - code: PERM-LIBRARY-BORROW
+  - id: Book_returnBack
+    name: 归还图书
+    ownerEntity: Book
+    behaviorType: COMMAND
+    triggerType: USER_ACTION
+    preconditions:
+      - expression: "status == '借出'"
+        description: 图书必须处于借出状态
+    postconditions:
+      - description: 图书状态改回在架
+    appliedRules: []
+    requiredPermissions:
+      - code: PERM-LIBRARY-BORROW
+  - id: Reader_register
+    name: 注册读者
+    ownerEntity: Reader
+    behaviorType: COMMAND
+    triggerType: USER_ACTION
+    preconditions: []
+    postconditions:
+      - description: 新增读者且状态为活跃
+    appliedRules: []
+    requiredPermissions:
+      - code: PERM-LIBRARY-READER-MGMT
+  - id: BorrowRecord_queryHistory
+    name: 查询借阅历史
+    ownerEntity: BorrowRecord
+    behaviorType: QUERY
+    triggerType: USER_ACTION
+    preconditions: []
+    postconditions: []
+    appliedRules: []
+    requiredPermissions:
+      - code: PERM-LIBRARY-QUERY

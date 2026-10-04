@@ -1,0 +1,23 @@
+# M5 主体模型 · 图书管理冒烟考题
+schema_version: "1.0.0"
+model_type: ACTOR
+
+actors:
+  - id: ROLE-LIBRARIAN
+    name: 图书管理员
+    description: 负责借还书与读者管理
+    roleType: INTERNAL
+    permissions:
+      - code: PERM-LIBRARY-BORROW
+        action: 借还操作
+      - code: PERM-LIBRARY-READER-MGMT
+        action: 读者管理
+      - code: PERM-LIBRARY-QUERY
+        action: 借阅查询
+  - id: ROLE-READER
+    name: 读者
+    description: 注册读者，可查询个人借阅历史
+    roleType: EXTERNAL
+    permissions:
+      - code: PERM-LIBRARY-QUERY
+        action: 借阅查询

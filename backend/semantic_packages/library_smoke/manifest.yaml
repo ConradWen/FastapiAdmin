@@ -1,0 +1,12 @@
+# 语义包 manifest · 图书管理冒烟考题（§0.3 发布单元=语义包不可拆）
+schema_version: "1.0.0"
+model_type: MANIFEST
+package_name: library_smoke
+description: P-13 G2 冒烟门图书考题——最小集六模型端到端输入
+model_files:
+  - m1-object-model.yaml
+  - m2-behavior-model.yaml
+  - m3-rule-model.yaml
+  - m5-actor-model.yaml
+  - m6-flow-model.yaml
+  - mu-ui-model.yaml

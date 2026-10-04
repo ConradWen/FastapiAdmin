@@ -1,0 +1,189 @@
+# M1 对象模型 · 图书管理冒烟考题（P-13 端到端输入）
+# 三大业务面：图书（封面/元数据）、借阅记录（核心交易）、读者（主体）
+schema_version: "1.0.0"
+model_type: OBJECT
+domain: "图书管理"
+
+aggregates:
+  - id: AGG-BOOK-001
+    name: 图书
+    alias: Book
+    aggregateType: AGGREGATE_ROOT
+    description: 馆藏图书的元数据与在架状态
+    lifecycle: [在架, 借出, 停借]
+    tags: [核心域]
+    attributes:
+      - name: bookNo
+        label: 图书编号
+        type: String
+        required: true
+        unique: true
+      - name: title
+        label: 书名
+        type: String
+        required: true
+        refRules:
+          - name: 书名长度限制
+            description: 书名不超过 100 字符
+            expression: "LENGTH(value) <= 100"
+            violationMessage: 书名不能超过 100 个字符
+            enforcedAt: ALWAYS
+      - name: categoryCode
+        label: 图书分类
+        type: DictionaryRef
+        required: true
+        dictionaryRef:
+          dictionaryId: DICT-LIBRARY-001
+          typeCode: BOOK_CATEGORY
+      - name: status
+        label: 图书状态
+        type: Enum
+        required: true
+        enumValues: [在架, 借出, 停借]
+    entities: []
+    valueObjects:
+      - name: 图书封面
+        alias: Cover
+        description: 图书封面的展示信息
+        immutable: true
+        equalityFields: [coverUrl]
+        attributes:
+          - name: coverUrl
+            label: 封面地址
+            type: String
+            required: true
+    invariants:
+      - name: 图书编号非空
+        expression: "bookNo != ''"
+        violationMessage: 图书编号不能为空
+        enforcedAt: ON_CREATE
+
+  - id: AGG-READER-001
+    name: 读者
+    alias: Reader
+    aggregateType: AGGREGATE_ROOT
+    description: 图书馆注册读者
+    lifecycle: [活跃, 停用]
+    attributes:
+      - name: readerNo
+        label: 读者编号
+        type: String
+        required: true
+        unique: true
+      - name: readerName
+        label: 读者姓名
+        type: String
+        required: true
+      - name: readerCategory
+        label: 读者类别
+        type: DictionaryRef
+        required: true
+        dictionaryRef:
+          dictionaryId: DICT-LIBRARY-001
+          typeCode: READER_CATEGORY
+    entities: []
+    valueObjects: []
+    invariants:
+      - name: 读者编号非空
+        expression: "readerNo != ''"
+        violationMessage: 读者编号不能为空
+        enforcedAt: ON_CREATE
+
+  - id: AGG-BORROW-001
+    name: 借阅记录
+    alias: BorrowRecord
+    aggregateType: AGGREGATE_ROOT
+    description: 一次借书到还书的完整交易记录
+    lifecycle: [借出中, 已归还, 逾期]
+    attributes:
+      - name: borrowNo
+        label: 借阅单号
+        type: String
+        required: true
+        unique: true
+      - name: bookId
+        label: 借出图书
+        type: AggregateRootRef
+        required: true
+        targetAggregate: AGG-BOOK-001
+      - name: readerId
+        label: 借阅读者
+        type: AggregateRootRef
+        required: true
+        targetAggregate: AGG-READER-001
+      - name: borrowDate
+        label: 借出日期
+        type: Date
+        required: true
+      - name: dueDate
+        label: 应还日期
+        type: Date
+        required: true
+      - name: returnDate
+        label: 归还日期
+        type: Date
+      - name: borrowStatus
+        label: 借阅状态
+        type: Enum
+        required: true
+        enumValues: [借出中, 已归还, 逾期]
+    entities: []
+    valueObjects: []
+    invariants:
+      - name: 应还日期不早于借出日期
+        expression: "dueDate >= borrowDate"
+        violationMessage: 应还日期不能早于借出日期
+        enforcedAt: ON_CREATE
+
+data_dictionaries:
+  - id: DICT-LIBRARY-001
+    name: 图书馆基础字典
+    types:
+      - typeCode: BOOK_CATEGORY
+        typeName: 图书分类
+        items:
+          - code: LITERATURE
+            label: 文学
+            enabled: true
+            sortOrder: 10
+          - code: TECHNOLOGY
+            label: 科技
+            enabled: true
+            sortOrder: 20
+          - code: HISTORY
+            label: 历史
+            enabled: true
+            sortOrder: 30
+      - typeCode: READER_CATEGORY
+        typeName: 读者类别
+        items:
+          - code: STUDENT
+            label: 学生
+            enabled: true
+            sortOrder: 10
+          - code: TEACHER
+            label: 教师
+            enabled: true
+            sortOrder: 20
+          - code: PUBLIC
+            label: 公众
+            enabled: true
+            sortOrder: 30
+
+aggregate_associations:
+  - id: ASSOC-BOOK-BORROW
+    sourceAggregate: AGG-BORROW-001
+    targetAggregate: AGG-BOOK-001
+    associationType: REFERENCE
+    sourceRole: 借出
+    targetRole: 被借阅图书
+    cardinality: MANY_TO_ONE
+    referenceField: bookId
+  - id: ASSOC-READER-BORROW
+    sourceAggregate: AGG-BORROW-001
+    targetAggregate: AGG-READER-001
+    associationType: REFERENCE
+    sourceRole: 发起借阅
+    targetRole: 借阅读者
+    cardinality: MANY_TO_ONE
+    referenceField: readerId

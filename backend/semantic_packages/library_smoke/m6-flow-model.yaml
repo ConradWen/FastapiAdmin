@@ -1,0 +1,33 @@
+# M6 流程模型 · 图书管理冒烟考题
+schema_version: "1.0.0"
+model_type: FLOW
+
+flows:
+  - id: FLOW-BORROW-CYCLE
+    name: 图书借还流程
+    description: 从读者发起借书到归还入架的端到端协同流
+    flowType: COLLABORATION
+    steps:
+      - id: STEP-BORROW-REQ
+        name: 发起借书
+        stepType: SYSTEM
+        behaviorRef: Book_borrowOut
+      - id: STEP-BORROW-OK
+        name: 借出确认
+        stepType: HUMAN_TASK
+        roleRef: ROLE-LIBRARIAN
+      - id: STEP-RETURN-REQ
+        name: 发起归还
+        stepType: SYSTEM
+        behaviorRef: Book_returnBack
+      - id: STEP-RETURN-OK
+        name: 归还入架
+        stepType: HUMAN_TASK
+        roleRef: ROLE-LIBRARIAN
+    transitions:
+      - from: STEP-BORROW-REQ
+        to: STEP-BORROW-OK
+      - from: STEP-BORROW-OK
+        to: STEP-RETURN-REQ
+      - from: STEP-RETURN-REQ
+        to: STEP-RETURN-OK

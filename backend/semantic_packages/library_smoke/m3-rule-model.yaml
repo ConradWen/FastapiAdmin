@@ -1,0 +1,28 @@
+# M3 规则模型 · 图书管理冒烟考题
+schema_version: "1.0.0"
+model_type: RULE
+
+rules:
+  - id: RULE-BORROW-LIMIT
+    name: 借阅上限校验
+    description: 单个读者同时借出图书不得超过 5 本
+    inputParams:
+      - name: activeBorrowCount
+        type: Integer
+        description: 读者当前借出中数量
+    expression: "activeBorrowCount < 5"
+    reusedBy:
+      - Book_borrowOut
+    version: "1.0.0"
+  - id: RULE-OVERDUE-FLAG
+    name: 逾期判定
+    description: 归还日期晚于应还日期即判定逾期
+    inputParams:
+      - name: dueDate
+        type: Date
+      - name: returnDate
+        type: Date
+    expression: "returnDate > dueDate"
+    reusedBy:
+      - Book_returnBack
+    version: "1.0.0"

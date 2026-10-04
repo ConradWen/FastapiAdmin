@@ -1,0 +1,56 @@
+# MU UI 模型 · 图书管理冒烟考题
+schema_version: "1.0.0"
+model_type: UI
+
+screens:
+  - id: SCREEN-LIBRARY-HOME
+    name: 图书馆工作台
+    screenType: WORKBENCH
+    menus:
+      - menuId: MENU-BOOK-MGMT
+        name: 图书管理
+        subMenus:
+          - subMenuId: SUBMENU-BOOK-LIST
+            name: 图书列表
+            screenRef: SCREEN-BOOK-LIST
+          - subMenuId: SUBMENU-BORROW-MGMT
+            name: 借阅管理
+            screenRef: SCREEN-BORROW-LIST
+  - id: SCREEN-BOOK-LIST
+    name: 图书列表
+    screenType: LIST
+    layout: |
+      +--------------------------------------+
+      | 图书管理 > 图书列表                    |
+      +--------------------------------------+
+      | [bookNo____] [title____] [搜索] [新增] |
+      +--------------------------------------+
+      | 编号   | 书名     | 分类   | 状态     |
+      | B001   | 三体     | 科技   | 在架     |
+      | B002   | 红楼梦   | 文学   | 借出     |
+      +--------------------------------------+
+      |                              [1] [2] >|
+      +--------------------------------------+
+    actionPoints:
+      - id: AP-BOOK-SEARCH
+        name: 搜索图书
+        behaviorRef: BorrowRecord_queryHistory
+        elementId: 搜索
+  - id: SCREEN-BORROW-LIST
+    name: 借阅管理
+    screenType: LIST
+    layout: |
+      +--------------------------------------+
+      | 图书管理 > 借阅管理                    |
+      +--------------------------------------+
+      | [borrowNo___] [borrowStatus_] [查询]  |
+      +--------------------------------------+
+      | 单号    | 图书   | 读者  | 状态      |
+      | JY001   | 三体   | 张三  | 借出中    |
+      | JY002   | 红楼梦 | 李四  | 已归还    |
+      +--------------------------------------+
+    actionPoints:
+      - id: AP-BORROW-QUERY
+        name: 查询借阅
+        behaviorRef: BorrowRecord_queryHistory
+        elementId: 查询
