@@ -77,6 +77,15 @@ def test_ddl_endpoint_deterministic() -> None:
     assert "CREATE TABLE t_book" in d1
 
 
+def test_migration_endpoint_deterministic() -> None:
+    c = _client()
+    r1 = c.post("/metastella/packages/library_smoke/migration")
+    assert r1.status_code == 200
+    r2 = c.post("/metastella/packages/library_smoke/migration")
+    assert r1.json()["data"]["script"] == r2.json()["data"]["script"]
+    assert "def upgrade()" in r1.json()["data"]["script"]
+
+
 def test_unknown_package_returns_404() -> None:
     resp = _client().get("/metastella/packages/no_such_pkg/manifest")
     assert resp.status_code == 404

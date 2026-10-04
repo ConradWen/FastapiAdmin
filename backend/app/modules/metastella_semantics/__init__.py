@@ -4,6 +4,7 @@
 边界：本模块不侵入上游任何文件目录（新链独立，R-8 约束）；AI 不进编译核心（规范 §12.2）。
 """
 
+from .alembic_generator import generate_migration
 from .ddl_generator import generate_ddl
 from .errors import (
     BadSchemaVersionError,
@@ -27,6 +28,7 @@ __all__ = [
     "compute_package_fingerprint",
     "publish_package",
     "generate_ddl",
+    "generate_migration",
     "MINIMAL_SET",
     "BadSchemaVersionError",
     "MissingSchemaVersionError",

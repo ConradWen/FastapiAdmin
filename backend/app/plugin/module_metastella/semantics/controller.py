@@ -16,6 +16,7 @@ from app.modules.metastella_semantics import (
     ModelPackageAlreadyPublishedError,
     compute_package_fingerprint,
     generate_ddl,
+    generate_migration,
     load_model_family,
     publish_package,
     validate_model,
@@ -91,5 +92,18 @@ async def post_package_ddl_controller(pkg: str):
     family = _load_family_or_404(pkg)
     return SuccessResponse(
         data={"package": pkg, "fingerprint": compute_package_fingerprint(family), "ddl": generate_ddl(family)},
+        msg="生成成功",
+    )
+
+
+@MetastellaRouter.post("/{pkg}/migration", summary="生成 Alembic 迁移脚本（D11.04 生成器唯一出处）")
+async def post_package_migration_controller(pkg: str):
+    family = _load_family_or_404(pkg)
+    return SuccessResponse(
+        data={
+            "package": pkg,
+            "fingerprint": compute_package_fingerprint(family),
+            "script": generate_migration(family),
+        },
         msg="生成成功",
     )
