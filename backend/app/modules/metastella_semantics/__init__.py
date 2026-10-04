@@ -5,6 +5,7 @@
 """
 
 from .alembic_generator import generate_migration
+from .app_generator import generate_app_bundle
 from .ddl_generator import generate_ddl
 from .errors import (
     BadSchemaVersionError,
@@ -29,6 +30,7 @@ __all__ = [
     "publish_package",
     "generate_ddl",
     "generate_migration",
+    "generate_app_bundle",
     "MINIMAL_SET",
     "BadSchemaVersionError",
     "MissingSchemaVersionError",
