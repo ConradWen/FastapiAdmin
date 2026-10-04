@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from .m1_validator import validate_object_model
+
 
 @dataclass(frozen=True)
 class ModelTypeSpec:
@@ -13,14 +15,14 @@ class ModelTypeSpec:
     validate: Callable[[dict], None] | None
 
 
-def _not_implemented(doc: dict) -> None:  # noqa: ARG001 — 占位：后续工单逐章落地
-    raise NotImplementedError("该章 validator 尚未落地（工单 02~05 推进）")
+def _not_implemented(doc: dict) -> None:  # noqa: ARG001 — 占位：后续工单 03~05 逐章落地
+    raise NotImplementedError("该章 validator 尚未落地（工单 03~05 推进）")
 
 
 REGISTRY: dict[str, ModelTypeSpec] = {
     spec.code: spec
     for spec in (
-        ModelTypeSpec("OBJECT", True, _not_implemented),     # M1（工单 02）
+        ModelTypeSpec("OBJECT", True, validate_object_model),  # M1（工单 02）
         ModelTypeSpec("BEHAVIOR", True, _not_implemented),   # M2
         ModelTypeSpec("RULE", True, _not_implemented),       # M3
         ModelTypeSpec("ACTOR", True, _not_implemented),      # M5
