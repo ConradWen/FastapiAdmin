@@ -77,6 +77,8 @@ services:
       SECRET_KEY: metastella_dev_insecure_key_0123456789abcdef
       DEMO_ENABLE: "false"
       LOGGER_LEVEL: INFO
+      # 注：曾试验 CAPTCHA_ENABLE=false——该版本前端 handleSubmit 硬依赖滑块 isPassing 位，
+      # 关验证码反而无法登录（前后端开关不联动，登记 AUDIT 域前端缺陷）。保持默认 True。
       # O-9 首段基线后调参：单 worker 下 ddl×50 并发 p50 908ms→多 worker 复核（.scratch/o9-benchmark/）
       WORKERS: "2"
       # W2a：发布台账（F-3 跨重启判重）——表由 ensure_ledger 幂等建
