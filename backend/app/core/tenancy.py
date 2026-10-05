@@ -17,6 +17,9 @@ from sqlalchemy.orm import Mapped, Session, mapped_column, with_loader_criteria
 current_tenant: ContextVar[int | None] = ContextVar("current_tenant", default=None)
 current_superadmin: ContextVar[bool] = ContextVar("current_superadmin", default=False)
 
+# 默认租户 id（种子/迁移回填/超管未指定归属的落点，三处同一语义）
+DEFAULT_TENANT_ID = 1
+
 
 class TenantMixin:
     """租户列（写侧由 init 事件自动填充；读侧配合 11b 全自动注入）。
@@ -62,8 +65,10 @@ def _fill_tenant_on_init(target: TenantMixin, args: Any, kwargs: Any) -> None:
     tenant_id = current_tenant.get()
     if tenant_id is None:
         if current_superadmin.get():
-            raise RuntimeError("超管写入租户资源必须显式指定 tenant_id")
-        raise RuntimeError("写入租户资源缺少租户上下文（NFR-5 fail-closed）")
+            # 超管跨租户操作未指定归属 → 落默认租户（平台「租户选择器」=11d-ii 开通流程）
+            tenant_id = DEFAULT_TENANT_ID
+        else:
+            raise RuntimeError("写入租户资源缺少租户上下文（NFR-5 fail-closed）")
     target.__dict__["tenant_id"] = tenant_id
 
 

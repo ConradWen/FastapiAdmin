@@ -11,7 +11,7 @@ from app.config.setting import settings
 from app.core.base_model import MappedBase
 from app.core.database import async_db_session, async_engine, create_tables
 from app.core.logger import logger
-from app.core.tenancy import set_current_tenant
+from app.core.tenancy import DEFAULT_TENANT_ID, set_current_tenant
 from app.modules.system.dept.model import DeptModel
 from app.modules.system.dict.model import DictDataModel, DictTypeModel
 from app.modules.system.menu.model import MenuModel
@@ -57,7 +57,7 @@ class InitializeData:
         async with async_db_session() as session, session.begin():
             # 种子期以默认租户上下文写入（11d 挂 TenantMixin 后写侧 fail-closed 需上下文）；
             # 平台初始化属系统级动作，不代表任何真实租户归属。
-            with set_current_tenant(1):
+            with set_current_tenant(DEFAULT_TENANT_ID):
                 await self.__init_data(session)
 
         # 内置本地存储源的根目录（种子节点 host 指向 static/upload），保证开箱可浏览

@@ -73,7 +73,7 @@ async def test_auto_fill_and_filter(session) -> None:
 
 async def test_superadmin_sees_all(session) -> None:
     with set_current_tenant(1):
-        session.add(Widget(name="t1"))
+        session.add(Widget(name="x"))
     await session.commit()
     with set_current_tenant(None, is_superadmin=True):
         rows = (await session.execute(select(Widget))).scalars().all()
@@ -81,6 +81,15 @@ async def test_superadmin_sees_all(session) -> None:
         q = apply_tenant_filter(select(Widget), Widget)
         rows2 = (await session.execute(q)).scalars().all()
         assert len(rows2) == 1
+
+
+def test_superadmin_write_falls_back_to_default_tenant() -> None:
+    """超管建租户资源未指定归属 → 落默认租户 1（平台开通选择器 UI=11d-ii；此处保证可用）。"""
+    with set_current_tenant(None, is_superadmin=True):
+        w = Widget(name="via-super")
+    from app.core.tenancy import DEFAULT_TENANT_ID
+
+    assert w.tenant_id == DEFAULT_TENANT_ID
 
 
 def test_context_var_default_none() -> None:
