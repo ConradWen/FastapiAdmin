@@ -12,7 +12,7 @@ from app.core.base_schema import JWTOutSchema
 from app.core.dependencies import db_getter, get_current_user, redis_getter
 from app.core.logger import logger
 from app.core.router_class import OperationLogRoute
-from app.core.security import CustomOAuth2PasswordRequestForm
+from app.core.security import CustomOAuth2PasswordRequestForm, OAuth2Schema
 
 from .oauth_service import OAuthProvider, finish_oauth_login, start_oauth_login
 from .schema import (
@@ -77,6 +77,17 @@ async def slider_complete_controller(
 ) -> JSONResponse:
     result: dict[str, Any] = await CaptchaService.slider_complete(redis=redis, request=request, captcha_key=body.captcha_key)
     return SuccessResponse(data=result, msg="滑块验证成功")
+
+
+@AuthRouter.post("/select-tenant/{tenant_id}", summary="选择/切换租户", response_model=ResponseSchema[None])
+async def select_tenant_controller(
+    redis: Annotated[Redis, Depends(redis_getter)],
+    token: Annotated[str, Depends(OAuth2Schema)],
+    tenant_id: Annotated[int, Path(description="目标租户ID")],
+) -> JSONResponse:
+    if await LoginService.select_tenant(redis=redis, token=token, tenant_id=tenant_id):
+        return SuccessResponse(msg="租户切换成功")
+    return ErrorResponse(msg="租户切换失败")
 
 
 @AuthRouter.post("/logout", summary="退出登录", response_model=ResponseSchema[None], dependencies=[Depends(get_current_user)])

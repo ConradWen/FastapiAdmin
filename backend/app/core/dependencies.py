@@ -50,6 +50,15 @@ async def get_current_user(
     return await _authenticate(token, db, redis)
 
 
+async def get_current_user_allow_pending(
+    db: AsyncSession = Depends(db_getter),
+    redis: Redis = Depends(redis_getter),
+    token: str = Depends(OAuth2Schema),
+) -> AuthSchema:
+    """临时(pending)会话专用：仅 select-tenant 等极少数端点使用（REQUIREMENTS v3.6）。"""
+    return await _authenticate(token, db, redis, allow_pending=True)
+
+
 WS_TOKEN_SUBPROTOCOL = "access_token"
 
 

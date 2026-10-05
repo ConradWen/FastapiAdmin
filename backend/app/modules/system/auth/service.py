@@ -310,6 +310,8 @@ class LoginService:
         login_location: str | None,
         ua_result: Any,
         login_type: str,
+        tenant_id: Any = -1,
+        tenant_pending: Any = -1,
     ) -> dict:
         """构建会话信息字典
 
@@ -326,13 +328,17 @@ class LoginService:
         返回:
         - dict: 会话信息字典
         """
+        if tenant_id == -1:  # 未显式决议 → 回退用户主归属列
+            tenant_id = getattr(user, "tenant_id", None)
+        if tenant_pending == -1:
+            tenant_pending = bool(user.is_superuser is False and tenant_id is None)
         return {
             "session_id": session_id,
             "user_id": user.id,
             "is_superuser": user.is_superuser,
-            "tenant_id": getattr(user, "tenant_id", None),
+            "tenant_id": tenant_id,
             "is_super_admin": user.is_superuser,
-            "tenant_pending": user.is_superuser is False and getattr(user, "tenant_id", None) is None,
+            "tenant_pending": tenant_pending,
             "user_status": user.status,
             "name": user.name,
             "user_name": user.username,
@@ -379,6 +385,24 @@ class LoginService:
 
         permissions, menu_ids = LoginService._collect_permissions(user)
 
+        # 多租户登录决议（REQUIREMENTS v3.6）：租户集=主归属列 ∪ platform_user_tenant；
+        # 单租户直落正式会话，多/零租户=临时会话（tenant_pending，仅可 select-tenant）。
+        from sqlalchemy import select
+
+        from app.core.tenancy import resolve_login_tenant
+        from app.modules.tenant.model import PlatformUserTenantModel
+
+        async with async_db_session() as db:
+            rows = (await db.execute(select(PlatformUserTenantModel.tenant_id).where(
+                PlatformUserTenantModel.user_id == user.id
+            ))).scalars().all()
+        tenant_ids: set[int] = set(rows)
+        if getattr(user, "tenant_id", None) is not None:
+            tenant_ids.add(user.tenant_id)
+        session_tenant_id, session_tenant_pending = resolve_login_tenant(
+            is_superuser=user.is_superuser, tenant_ids=tenant_ids
+        )
+
         session_dict = LoginService._build_session_dict(
             user=user,
             session_id=session_id,
@@ -388,6 +412,8 @@ class LoginService:
             login_location=login_location,
             ua_result=ua_result,
             login_type=login_type,
+            tenant_id=session_tenant_id,
+            tenant_pending=session_tenant_pending,
         )
         # 会话创建时间（UTC）：滑动续期的绝对存活上限判据，见 dependencies._authenticate
         session_dict["created_at"] = datetime.now(UTC).isoformat()
@@ -524,6 +550,63 @@ class LoginService:
             token_type=settings.TOKEN_TYPE,
             expires_in=int(access_expires.total_seconds()),
         )
+
+    @staticmethod
+    def _apply_selected_tenant(session_dict: dict, *, tenant_id: int, allowed: set[int]) -> None:
+        """校验归属后改写会话（纯函数，便于单测）：非归属租户一律拒绝。"""
+        if tenant_id not in allowed:
+            raise CustomException(msg="无权切换到该租户")
+        session_dict["tenant_id"] = tenant_id
+        session_dict["tenant_pending"] = False
+
+    @classmethod
+    async def select_tenant(cls, redis: Redis, token: str, tenant_id: int) -> bool:
+        """选择/切换租户：临时(pending)会话校验归属后改写为正式会话（会话制，JWT 不动）。"""
+        from sqlalchemy import select
+
+        from app.modules.tenant.model import PlatformUserTenantModel
+
+        payload = decode_access_token(token=token)
+        session_id = payload.sub
+        if not session_id:
+            raise CustomException(msg="非法凭证,无法获取会话编号")
+
+        session_key = f"{RedisInitKeyConfig.USER_SESSION.key}:{session_id}"
+        raw = await RedisCURD(redis).get(session_key)
+        if not raw:
+            raise CustomException(msg="会话不存在或已过期")
+        session_dict = json.loads(raw)
+
+        user_id = session_dict.get("user_id")
+        if not user_id:
+            raise CustomException(msg="会话数据异常")
+
+        async with async_db_session() as db:
+            rows = (
+                await db.execute(
+                    select(PlatformUserTenantModel.tenant_id).where(PlatformUserTenantModel.user_id == user_id)
+                )
+            ).scalars().all()
+            from app.modules.system.user.model import UserModel
+
+            main_tenant = (
+                await db.execute(select(UserModel.tenant_id).where(UserModel.id == user_id))
+            ).scalar()
+        allowed: set[int] = set(rows)
+        if main_tenant is not None:
+            allowed.add(main_tenant)
+
+        cls._apply_selected_tenant(session_dict, tenant_id=tenant_id, allowed=allowed)
+
+        # 保持剩余 TTL 写回（select-tenant 不续命）
+        remain = await RedisCURD(redis).ttl(session_key)
+        await RedisCURD(redis).set(
+            key=session_key,
+            value=json.dumps(session_dict, default=str),
+            expire=remain if remain and remain > 0 else settings.REFRESH_TOKEN_EXPIRE_SECONDS,
+        )
+        logger.info(f"用户切换租户成功: user_id={user_id}, tenant_id={tenant_id}")
+        return True
 
     @staticmethod
     async def logout(redis: Redis, token: str) -> bool:

@@ -49,6 +49,20 @@ def set_current_tenant(tenant_id: int | None, *, is_superadmin: bool = False) ->
         current_superadmin.reset(tok_s)
 
 
+def resolve_login_tenant(*, is_superuser: bool, tenant_ids: set[int]) -> tuple[int | None, bool]:
+    """登录会话租户决议（REQUIREMENTS v3.6 多租户登录）：
+
+    - 超管：不绑租户（tenant=None，非 pending，过滤豁免）。
+    - 单租户：直落正式会话。
+    - 多租户/无租户：临时会话（pending=True，仅可访问 select-tenant，fail-closed）。
+    """
+    if is_superuser:
+        return None, False
+    if len(tenant_ids) == 1:
+        return next(iter(tenant_ids)), False
+    return None, True
+
+
 def apply_tenant_filter(stmt: Any, model: type) -> Any:
     """读侧过滤：超管或无上下文放行，否则追加 `WHERE tenant_id = 当前租户`。"""
     tenant_id = current_tenant.get()
