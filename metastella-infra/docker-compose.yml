@@ -76,6 +76,9 @@ services:
       REDIS_PASSWORD: metastella_dev
       SECRET_KEY: metastella_dev_insecure_key_0123456789abcdef
       DEMO_ENABLE: "false"
+      # 租户灰度门（11c）：claims/上下文已全链实证（超管 ENFORCE on 不误伤）；
+      # 保持 false 直到 11d 给 User 挂 tenant_id 并回填——否则非超管全被 pending 锁。
+      # TENANT_ENFORCE: "true"  # 11d 回填后翻此开关
       LOGGER_LEVEL: INFO
       # 注：曾试验 CAPTCHA_ENABLE=false——该版本前端 handleSubmit 硬依赖滑块 isPassing 位，
       # 关验证码反而无法登录（前后端开关不联动，登记 AUDIT 域前端缺陷）。保持默认 True。
