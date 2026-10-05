@@ -57,6 +57,28 @@ def apply_tenant_filter(stmt: Any, model: type) -> Any:
     return stmt.where(model.tenant_id == tenant_id)
 
 
+def tenant_read_condition(model: type) -> Any | None:
+    """CRUD 层读条件（§139「二次确认」）：返回追加到 WHERE 的租户条件，或 None（放行）。
+
+    - 非 TenantMixin：None（无租户维度）。
+    - 超管 / 无上下文：None（超管看全量；无上下文交由 ORM 层/上层处理）。
+    - 共享读模型(`__platform_data_shared__`)：`tenant_id == 当前 OR == 默认租户`
+      （本租户数据 + 平台共享字典；ORM 事件层对这类跳过，故必须在此补齐）。
+    - 普通租户模型：`tenant_id == 当前`。
+    """
+    from sqlalchemy import or_
+
+    if not issubclass(model, TenantMixin):
+        return None
+    tenant_id = current_tenant.get()
+    if tenant_id is None or current_superadmin.get():
+        return None
+    col = model.tenant_id
+    if getattr(model, "__platform_data_shared__", False):
+        return or_(col == tenant_id, col == DEFAULT_TENANT_ID)
+    return col == tenant_id
+
+
 @event.listens_for(TenantMixin, "init", propagate=True)
 def _fill_tenant_on_init(target: TenantMixin, args: Any, kwargs: Any) -> None:
     """写侧 fail-closed：构造即捕获租户上下文（构造发生在请求上下文内，add/commit 可延后）。"""

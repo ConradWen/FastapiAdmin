@@ -332,6 +332,14 @@ class CRUDBase[ModelType: ModelMixin, CreateSchemaType, UpdateSchemaType]:
         if hasattr(self.model, "is_deleted") and not include_deleted:
             conditions.append(getattr(self.model, "is_deleted") == false())
 
+        # 租户读条件（§139 二次确认）：普通租户模型锁本租户；共享读模型(Dict)补
+        # `本租户 OR 默认租户`（ORM 事件层对共享模型跳过，故必须在此兜住，防跨租户裸奔）。
+        from app.core.tenancy import tenant_read_condition
+
+        tenant_cond = tenant_read_condition(self.model)
+        if tenant_cond is not None:
+            conditions.append(tenant_cond)
+
         from app.core.permission import Permission
 
         permission_condition = await Permission(self.model, self.auth, self.db)._permission_condition()
