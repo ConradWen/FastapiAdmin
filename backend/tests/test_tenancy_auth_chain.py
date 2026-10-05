@@ -90,7 +90,17 @@ async def test_shared_model_bulk_update_blocked(test_client) -> None:
     assert result.rowcount == 0, f"共享模型批量 update 未锁租户（命中 {result.rowcount}）"
 
 
-async def test_shared_model_object_update_blocked(test_client) -> None:
+async def test_dict_cache_key_is_tenant_scoped(test_client) -> None:
+    """A-C3：字典缓存键带租户维度，跨租户刷新不得互相污染平台桶。"""
+    from app.core.tenancy import DEFAULT_TENANT_ID
+    from app.modules.system.dict.service import _dict_cache_key
+
+    with set_current_tenant(DEFAULT_TENANT_ID):
+        k_platform = _dict_cache_key("sex")
+    with set_current_tenant(2):
+        k_t2 = _dict_cache_key("sex")
+    assert k_platform != k_t2
+    assert k_platform.endswith(f":{DEFAULT_TENANT_ID}:sex") and k_t2.endswith(":2:sex")
     """flush 对象路径（CRUD.update 式）写守卫：租户2 不得改平台(tenant1)字典行。"""
     async with async_db_session() as db:
         row = (await db.execute(select(DictTypeModel).where(DictTypeModel.tenant_id == 1).limit(1))).scalars().first()

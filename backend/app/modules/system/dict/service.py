@@ -10,6 +10,7 @@ from app.core.database import async_db_session
 from app.core.exceptions import CustomException
 from app.core.logger import logger
 from app.core.redis_crud import RedisCURD
+from app.core.tenancy import DEFAULT_TENANT_ID, current_tenant, set_current_tenant
 from app.utils.common_util import search_to_dict
 
 from .crud import DictDataCRUD, DictTypeCRUD
@@ -23,6 +24,13 @@ from .schema import (
     DictTypeQueryParam,
     DictTypeUpdateSchema,
 )
+
+
+def _dict_cache_key(dict_type: str) -> str:
+    """字典缓存键带租户维度（阶段审计 A-C3）：
+    各租户的"本租户∪平台共享"合成视图存各自主键，避免跨租户刷新互相污染。"""
+    tid = current_tenant.get() or DEFAULT_TENANT_ID
+    return f"{RedisInitKeyConfig.SYSTEM_DICT.key}:{tid}:{dict_type}"
 
 
 class DictTypeService:
@@ -110,7 +118,7 @@ class DictTypeService:
 
         new_obj_dict = DictTypeOutSchema.model_validate(obj)
 
-        redis_key = f"{RedisInitKeyConfig.SYSTEM_DICT.key}:1:{data.dict_type}"
+        redis_key = _dict_cache_key(data.dict_type)
 
         try:
             await RedisCURD(redis).set(
@@ -161,7 +169,7 @@ class DictTypeService:
 
         new_obj_dict = DictTypeOutSchema.model_validate(obj)
 
-        redis_key = f"{RedisInitKeyConfig.SYSTEM_DICT.key}:1:{data.dict_type}"
+        redis_key = _dict_cache_key(data.dict_type)
         try:
             # 获取当前字典类型的所有字典数据，确保包含最新状态
             dict_data_list = await DictDataCRUD(self.auth, self.db).get_list(search={"dict_type": data.dict_type})
@@ -209,7 +217,7 @@ class DictTypeService:
         # 验证通过后统一删除 Redis 缓存
         existing_dict_types = {obj.dict_type for obj in existing if obj.id in ids}
         for dt in existing_dict_types:
-            redis_key = f"{RedisInitKeyConfig.SYSTEM_DICT.key}:1:{dt}"
+            redis_key = _dict_cache_key(dt)
             try:
                 await RedisCURD(redis).delete(redis_key)
                 logger.info(f"删除字典类型缓存: {dt}")
@@ -306,31 +314,36 @@ class DictDataService:
         - None
         """
         try:
-            async with async_db_session() as session, session.begin():
-                init_auth = AuthSchema()
-                obj_list = await DictTypeCRUD(init_auth, session).get_list()
-                if not obj_list:
-                    logger.warning("未找到任何字典类型数据")
-                    return
-
-                for obj in obj_list:
-                    dict_type = obj.dict_type
-                    try:
-                        dict_data_list = await DictDataCRUD(init_auth, session).get_list(search={"dict_type": dict_type})
-                        dict_data = [DictDataOutSchema.model_validate(row).model_dump(mode="json") for row in dict_data_list if row]
-                        redis_key = f"{RedisInitKeyConfig.SYSTEM_DICT.key}:1:{dict_type}"
-                        value = json.dumps(dict_data, ensure_ascii=False)
-                        await RedisCURD(redis).set(
-                            key=redis_key,
-                            value=value,
-                            expire=None,
-                        )
-                    except Exception as e:
-                        logger.error(f"❌ 初始化字典数据失败 [{dict_type}]: {e}")
-
+            # 启动预热只针对平台租户（阶段审计 A-C3）：避免无上下文时把所有租户行灌进平台桶。
+            with set_current_tenant(DEFAULT_TENANT_ID):
+                await DictDataService._init_cache_scoped(redis)
         except Exception as e:
             logger.error(f"❌️ 字典初始化过程发生错误: {e}")
             raise
+
+    @staticmethod
+    async def _init_cache_scoped(redis: Redis) -> None:
+        async with async_db_session() as session, session.begin():
+            init_auth = AuthSchema()
+            obj_list = await DictTypeCRUD(init_auth, session).get_list()
+            if not obj_list:
+                logger.warning("未找到任何字典类型数据")
+                return
+
+            for obj in obj_list:
+                dict_type = obj.dict_type
+                try:
+                    dict_data_list = await DictDataCRUD(init_auth, session).get_list(search={"dict_type": dict_type})
+                    dict_data = [DictDataOutSchema.model_validate(row).model_dump(mode="json") for row in dict_data_list if row]
+                    redis_key = _dict_cache_key(dict_type)
+                    value = json.dumps(dict_data, ensure_ascii=False)
+                    await RedisCURD(redis).set(
+                        key=redis_key,
+                        value=value,
+                        expire=None,
+                    )
+                except Exception as e:
+                    logger.error(f"❌ 初始化字典数据失败 [{dict_type}]: {e}")
 
     @staticmethod
     async def get_init_cache(redis: Redis, dict_type: str) -> list[dict]:
@@ -356,7 +369,7 @@ class DictDataService:
                 return None
 
         try:
-            redis_key = f"{RedisInitKeyConfig.SYSTEM_DICT.key}:1:{dict_type}"
+            redis_key = _dict_cache_key(dict_type)
             obj_list_dict = await RedisCURD(redis).get(redis_key)
 
             result = _parse(obj_list_dict)
