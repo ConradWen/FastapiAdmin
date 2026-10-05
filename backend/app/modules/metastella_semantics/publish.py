@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from .errors import ModelStructureError, SemanticPackageError, SemanticSchemaError
+from .family_checks import check_family
 from .validator import validate_model
 
 
@@ -52,6 +53,8 @@ def publish_package(
         except NotImplementedError:
             pending.append(model_type)
 
+    family_result = check_family(family, package=package_name, raise_on_error=True)
+
     versions = {doc.get("schema_version") for doc in family.values()}
     if len(versions) != 1 or not versions.pop():
         raise ModelStructureError("发布前族内 schema_version 必须一致且存在（D11.01）")
@@ -73,6 +76,7 @@ def publish_package(
         "published_by": published_by,
         "model_types": sorted(family),
         "validators_pending": pending,
+        "family_warnings": family_result.warnings,
         "models": dict.fromkeys(family),
     }
     _REGISTRY[(package_name, fingerprint)] = record

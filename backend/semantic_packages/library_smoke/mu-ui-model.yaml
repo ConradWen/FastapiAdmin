@@ -16,6 +16,15 @@ screens:
           - subMenuId: SUBMENU-BORROW-MGMT
             name: 借阅管理
             screenRef: SCREEN-BORROW-LIST
+    layout: |
+      +--------------------------------------+
+      | 图书馆工作台          [注册]           |
+      +--------------------------------------+
+    actionPoints:
+      - id: AP-READER-REGISTER
+        name: 注册读者
+        behaviorRef: Reader_register
+        elementId: 注册
   - id: SCREEN-BOOK-LIST
     name: 图书列表
     screenType: LIST
@@ -24,6 +33,7 @@ screens:
       | 图书管理 > 图书列表                    |
       +--------------------------------------+
       | [bookNo____] [title____] [搜索] [新增] |
+      | [借出] [归还]                          |
       +--------------------------------------+
       | 编号   | 书名     | 分类   | 状态     |
       | B001   | 三体     | 科技   | 在架     |
@@ -36,6 +46,14 @@ screens:
         name: 搜索图书
         behaviorRef: Book_query
         elementId: 搜索
+      - id: AP-BOOK-BORROW
+        name: 借出图书
+        behaviorRef: Book_borrowOut
+        elementId: 借出
+      - id: AP-BOOK-RETURN
+        name: 归还图书
+        behaviorRef: Book_returnBack
+        elementId: 归还
   - id: SCREEN-BORROW-LIST
     name: 借阅管理
     screenType: LIST

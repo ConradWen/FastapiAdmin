@@ -15,6 +15,7 @@ from .errors import (
     SemanticPackageError,
     UnknownModelTypeError,
 )
+from .family_checks import FamilyCheckResult, check_family
 from .loader import load_model_family, load_model_file
 from .publish import ModelPackageAlreadyPublishedError, compute_package_fingerprint, publish_package
 from .registry import MINIMAL_SET
@@ -31,6 +32,8 @@ __all__ = [
     "generate_ddl",
     "generate_migration",
     "generate_app_bundle",
+    "check_family",
+    "FamilyCheckResult",
     "MINIMAL_SET",
     "BadSchemaVersionError",
     "MissingSchemaVersionError",

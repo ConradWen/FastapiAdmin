@@ -14,6 +14,7 @@ from app.common.response import SuccessResponse
 from app.core.exceptions import CustomException
 from app.modules.metastella_semantics import (
     ModelPackageAlreadyPublishedError,
+    check_family,
     compute_package_fingerprint,
     generate_ddl,
     generate_migration,
@@ -69,8 +70,16 @@ async def post_package_validate_controller(pkg: str):
             pending.append(model_type)
         except SemanticSchemaError as exc:
             errors.append(f"{model_type}: {exc}")
+    family_result = check_family(family, package=pkg)
+    errors.extend(family_result.errors)
     return SuccessResponse(
-        data={"package": pkg, "valid": not errors, "errors": errors, "validators_pending": pending},
+        data={
+            "package": pkg,
+            "valid": not errors,
+            "errors": errors,
+            "validators_pending": pending,
+            "family_warnings": family_result.warnings,
+        },
         msg="校验完成",
     )
 
