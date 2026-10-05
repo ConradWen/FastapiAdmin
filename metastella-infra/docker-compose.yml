@@ -79,6 +79,8 @@ services:
       LOGGER_LEVEL: INFO
       # O-9 首段基线后调参：单 worker 下 ddl×50 并发 p50 908ms→多 worker 复核（.scratch/o9-benchmark/）
       WORKERS: "2"
+      # W2a：发布台账（F-3 跨重启判重）——表由 ensure_ledger 幂等建
+      LEDGER_DSN: postgresql://metastella:metastella_dev@postgres:5432/metastella
     ports:
       - "127.0.0.1:58001:8001"
     volumes:

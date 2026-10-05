@@ -29,3 +29,7 @@ class ModelStructureError(SemanticSchemaError):
 
 class SemanticPackageError(SemanticSchemaError):
     """语义包发布状态机错误基类（D11.02/F-3）。"""
+
+
+class ModelPackageAlreadyPublishedError(SemanticPackageError):
+    """同指纹语义包已发布（F-3 内容不可变——重发布须出新版本）。"""

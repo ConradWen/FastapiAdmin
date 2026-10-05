@@ -7,13 +7,14 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from .errors import ModelStructureError, SemanticPackageError, SemanticSchemaError
+from .errors import (
+    ModelPackageAlreadyPublishedError,
+    ModelStructureError,
+    SemanticSchemaError,
+)
 from .family_checks import check_family
+from .publish_ledger import is_published, record_publish
 from .validator import validate_model
-
-
-class ModelPackageAlreadyPublishedError(SemanticPackageError):
-    """同指纹语义包已发布（F-3 内容不可变——重发布须出新版本）。"""
 
 
 def canonical_json(obj: Any) -> str:
@@ -38,6 +39,7 @@ def publish_package(
     *,
     package_name: str,
     published_by: str = "system",
+    ledger_conn: Any | None = None,
 ) -> dict[str, Any]:
     """草稿→发布状态机：**先过 §12 校验门禁**，再指纹钉死+快照留痕（F-3 不可变）。
 
@@ -60,6 +62,10 @@ def publish_package(
         raise ModelStructureError("发布前族内 schema_version 必须一致且存在（D11.01）")
 
     fingerprint = compute_package_fingerprint(family)
+    if ledger_conn is not None and is_published(ledger_conn, package_name, fingerprint):
+        raise ModelPackageAlreadyPublishedError(
+            f"语义包 {package_name} 指纹 {fingerprint} 已在台账发布（F-3 持久不可变）"
+        )
     existing = _REGISTRY.get((package_name, fingerprint))
     if existing is not None:
         raise ModelPackageAlreadyPublishedError(
@@ -80,6 +86,9 @@ def publish_package(
         "models": dict.fromkeys(family),
     }
     _REGISTRY[(package_name, fingerprint)] = record
+    if ledger_conn is not None:
+        # record_publish 内部映射竞态→ModelPackageAlreadyPublishedError（F-3 单一事实源=台账）
+        record_publish(ledger_conn, record)
     return record
 
 

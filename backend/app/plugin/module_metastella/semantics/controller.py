@@ -1,10 +1,12 @@
-"""metastella 语义引擎 API 骨架（m2-minset 工单 05b）。
+"""metastella 语义引擎 API 骨架（m2-minset 工单 05b/08a/W2a）。
 
-四端点消费 backend/semantic_packages/ 下的语义包；发布判重**单一事实源在引擎层**
-（publish_package 的注册表——控制器不再自判，杜绝双源）。PG 持久化台账挂 M2 中期。
+四端点消费 backend/semantic_packages/ 下的语义包；发布判重**单一事实源=PG 台账**
+（env LEDGER_DSN 启用；未设退回进程内注册表——降级不吞发布）。
 """
 
+import os
 from pathlib import Path
+from typing import Any
 
 import yaml
 from fastapi import APIRouter
@@ -23,6 +25,7 @@ from app.modules.metastella_semantics import (
     validate_model,
 )
 from app.modules.metastella_semantics.errors import SemanticSchemaError
+from app.modules.metastella_semantics.publish_ledger import ensure_ledger
 
 MetastellaRouter = APIRouter(prefix="/packages", tags=["MetaStella 语义引擎"])
 
@@ -30,6 +33,25 @@ MetastellaRouter = APIRouter(prefix="/packages", tags=["MetaStella 语义引擎"
 # semantic_packages/ 与 app/ 平级（backend/semantic_packages/library_smoke/...）
 PACKAGES_ROOT = Path(__file__).parents[4] / "semantic_packages"
 _MANIFEST = "manifest.yaml"
+
+_ledger_state: dict[str, Any] = {"conn": None, "tried": False}
+
+
+def _open_ledger():
+    """台账连接（F-3 跨重启）：env LEDGER_DSN 设置即启用；未设/不可达退回进程内注册表（测试无库可跑）。"""
+    if not _ledger_state["tried"]:
+        _ledger_state["tried"] = True
+        dsn = os.environ.get("LEDGER_DSN", "").strip()
+        if dsn:
+            try:
+                import psycopg
+
+                conn = psycopg.connect(dsn, connect_timeout=3)
+                ensure_ledger(conn)
+                _ledger_state["conn"] = conn
+            except Exception:  # noqa: BLE001 — 台账缺席只降级不吞发布
+                _ledger_state["conn"] = None
+    return _ledger_state["conn"]
 
 
 def _load_family_or_404(pkg: str) -> dict:
@@ -88,7 +110,7 @@ async def post_package_validate_controller(pkg: str):
 async def post_package_publish_controller(pkg: str):
     family = _load_family_or_404(pkg)
     try:
-        record = publish_package(family, package_name=pkg)
+        record = publish_package(family, package_name=pkg, ledger_conn=_open_ledger())
     except ModelPackageAlreadyPublishedError as exc:
         raise CustomException(msg=str(exc), code=RET.CONFLICT.code) from exc
     except SemanticSchemaError as exc:
