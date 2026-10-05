@@ -42,6 +42,7 @@ def check_family(
     result = FamilyCheckResult(package=package)
     _check_references(family, result)
     _check_api_surface(family, result)
+    _check_databinding(family, result)
     _check_permissions(family, result)
     _check_roles(family, result)
     _check_flow(family, result)
@@ -268,6 +269,58 @@ def _check_flow(family: Mapping[str, Any], result: FamilyCheckResult) -> None:
             if missing:
                 result.errors.append(
                     f"审批双出边（D6.05）：APPROVAL_TASK {sid} 缺 {'/'.join(sorted(missing))} 出边"
+                )
+
+
+# ---- dataBinding 引用可解析（§8.7-1）+ io/required 对齐（D8.04） ----
+
+
+def _check_databinding(family: Mapping[str, Any], result: FamilyCheckResult) -> None:
+    attrs: dict[str, dict[str, bool]] = {}  # alias -> {attr: required}
+    for agg in family.get("OBJECT", {}).get("aggregates", []):
+        if not isinstance(agg, dict):
+            continue
+        attrs[str(agg.get("alias"))] = {
+            str(a.get("name")): bool(a.get("required")) for a in agg.get("attributes", []) if isinstance(a, dict)
+        }
+
+    bound_required: set[tuple[str, str]] = set()
+    for screen in family.get("UI", {}).get("screens", []):
+        if not isinstance(screen, dict):
+            continue
+        for element in screen.get("elements", []) or []:
+            if not isinstance(element, dict):
+                continue
+            binding = element.get("dataBinding")
+            if not isinstance(binding, str) or not binding:
+                continue
+            alias, _, attr = binding.partition(".")
+            eid = f"屏幕 {screen.get('id')} 元素 {element.get('id')}"
+            if alias not in attrs:
+                result.errors.append(f"引用完整性：{eid} dataBinding={binding!r} 聚合 {alias} 不存在（§8.7-1）")
+                continue
+            if attr not in attrs[alias]:
+                result.errors.append(f"引用完整性：{eid} dataBinding={binding!r} 属性不存在（§8.7-1）")
+                continue
+            m1_required = attrs[alias][attr]
+            elem_required = element.get("required") is True
+            io = element.get("io")
+            if elem_required and not m1_required:
+                result.errors.append(
+                    f"io/required 对齐（D8.04）：{eid} 标 required 但 M1 属性 {binding} 非必填"
+                )
+            if m1_required and io in {"I", "I_O"} and not elem_required:
+                result.errors.append(
+                    f"io/required 对齐（D8.04）：M1 属性 {binding} 必填但输入元素未标 required"
+                )
+            if m1_required and io in {"I", "I_O"}:
+                bound_required.add((alias, attr))
+
+    for alias, attr_map in attrs.items():
+        for attr, required in attr_map.items():
+            if required and (alias, attr) not in bound_required:
+                result.warnings.append(
+                    f"dataBinding 缺口（§8.7-1）：M1 必填属性 {alias}.{attr} 未被任何输入元素绑定"
                 )
 
 

@@ -69,6 +69,17 @@ def validate_ui_model(doc: dict[str, Any]) -> None:
                 raise ModelStructureError(f"屏幕 {sid} 元素 {eid}: io 须为 I/O/I_O（v9 §8.2.4）")
             if "required" in element and not isinstance(element["required"], bool):
                 raise ModelStructureError(f"屏幕 {sid} 元素 {eid}: required 须为布尔（v9 §8.2.4）")
+            if element.get("required") is True and element.get("io") == "O":
+                raise ModelStructureError(
+                    f"屏幕 {sid} 元素 {eid}: 纯输出元素不得标 required（D8.04 io/required 一致）"
+                )
+            binding = element.get("dataBinding")
+            if binding is not None and not isinstance(binding, str):
+                raise ModelStructureError(f"屏幕 {sid} 元素 {eid}: dataBinding 须为字符串路径")
+            if isinstance(binding, str) and binding and binding.count(".") != 1:
+                raise ModelStructureError(
+                    f"屏幕 {sid} 元素 {eid}: dataBinding={binding!r} 须为 {{Alias}}.{{attribute}} 形态（v9 §8.7-1）"
+                )
 
         layout = screen.get("layout", "")
         if isinstance(layout, str) and layout.strip():

@@ -63,10 +63,19 @@ screens:
         type: TEXTBOX
         label: 图书编号
         io: I
+        required: true
+        dataBinding: Book.bookNo
       - id: title
         type: TEXTBOX
         label: 书名
         io: I
+        required: true
+        dataBinding: Book.title
+      - id: listedAt
+        type: DATEPICKER
+        label: 入藏时间
+        io: I
+        dataBinding: Book.listedAt
       - id: 搜索
         type: BUTTON
         label: 搜索
@@ -106,10 +115,14 @@ screens:
         type: TEXTBOX
         label: 借阅单号
         io: I
+        required: true
+        dataBinding: BorrowRecord.borrowNo
       - id: borrowStatus
         type: COMBO
         label: 借阅状态
         io: I
+        required: true
+        dataBinding: BorrowRecord.borrowStatus
       - id: 查询
         type: BUTTON
         label: 查询

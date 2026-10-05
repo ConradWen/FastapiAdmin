@@ -47,7 +47,7 @@ aggregates:
       - name: listedAt
         label: 入藏日期
         type: DateTime
-        required: true
+        required: false
     entities: []
     valueObjects:
       - name: 图书封面
