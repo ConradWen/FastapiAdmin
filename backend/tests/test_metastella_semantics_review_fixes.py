@@ -46,9 +46,9 @@ def test_publish_package_rejects_invalid_model() -> None:
 
 
 def test_publish_package_records_pending_chapters() -> None:
-    """占位章（M2~MU）不阻断发布，但发布记录显式留痕 validators_pending。"""
+    """08b 后口径：最小集六章 validator 全部在位——pending 应为空（扩展族 W3 才占 pending）。"""
     record = publish_package(_load(), package_name="library_smoke")
-    assert record["validators_pending"] == ["ACTOR", "BEHAVIOR", "FLOW", "RULE", "UI"]
+    assert record["validators_pending"] == []
 
 
 def test_publish_record_takes_schema_version_from_family() -> None:

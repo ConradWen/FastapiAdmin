@@ -5,6 +5,7 @@ model_type: RULE
 rules:
   - id: RULE-BORROW-LIMIT
     name: 借阅上限校验
+    ruleType: VALIDATION
     description: 单个读者同时借出图书不得超过 5 本
     inputParams:
       - name: activeBorrowCount
@@ -16,6 +17,7 @@ rules:
     version: "1.0.0"
   - id: RULE-OVERDUE-FLAG
     name: 逾期判定
+    ruleType: DERIVATION
     description: 归还日期晚于应还日期即判定逾期
     inputParams:
       - name: dueDate

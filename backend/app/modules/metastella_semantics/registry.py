@@ -6,6 +6,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from .m1_validator import validate_object_model
+from .m2_validator import validate_behavior_model
+from .m3_validator import validate_rule_model
+from .m5_validator import validate_actor_model
+from .m6_validator import validate_flow_model
+from .mu_validator import validate_ui_model
 
 
 @dataclass(frozen=True)
@@ -15,21 +20,21 @@ class ModelTypeSpec:
     validate: Callable[[dict], None] | None
 
 
-def _not_implemented(doc: dict) -> None:  # noqa: ARG001 — 占位：M2~MU 深度校验随后续批次逐章落地
-    raise NotImplementedError("该章 validator 尚未落地（M2~MU 深度校验批次补）")
+def _not_implemented(doc: dict) -> None:  # noqa: ARG001 — 占位：扩展族（W3）逐章落地
+    raise NotImplementedError("扩展族章节 validator 未落地（W3 批次）")
 
 
 REGISTRY: dict[str, ModelTypeSpec] = {
     spec.code: spec
     for spec in (
-        ModelTypeSpec("OBJECT", True, validate_object_model),  # M1（工单 02）
-        ModelTypeSpec("BEHAVIOR", True, _not_implemented),   # M2
-        ModelTypeSpec("RULE", True, _not_implemented),       # M3
-        ModelTypeSpec("ACTOR", True, _not_implemented),      # M5
-        ModelTypeSpec("FLOW", True, _not_implemented),       # M6
-        ModelTypeSpec("UI", True, _not_implemented),         # MU
-        ModelTypeSpec("EVENT", False, _not_implemented),     # ME（扩展族）
-        ModelTypeSpec("REPORT", False, _not_implemented),    # M7（扩展族）
+        ModelTypeSpec("OBJECT", True, validate_object_model),  # M1
+        ModelTypeSpec("BEHAVIOR", True, validate_behavior_model),  # M2（工单 08b）
+        ModelTypeSpec("RULE", True, validate_rule_model),  # M3
+        ModelTypeSpec("ACTOR", True, validate_actor_model),  # M5
+        ModelTypeSpec("FLOW", True, validate_flow_model),  # M6
+        ModelTypeSpec("UI", True, validate_ui_model),  # MU
+        ModelTypeSpec("EVENT", False, _not_implemented),  # ME（扩展族）
+        ModelTypeSpec("REPORT", False, _not_implemented),  # M7（扩展族）
         ModelTypeSpec("MASTER_DATA_MAPPING", False, _not_implemented),  # MM（扩展族）
     )
 }

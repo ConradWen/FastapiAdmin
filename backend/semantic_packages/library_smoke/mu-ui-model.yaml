@@ -25,6 +25,10 @@ screens:
         name: 注册读者
         behaviorRef: Reader_register
         elementId: 注册
+    elements:
+      - id: 注册
+        type: BUTTON
+        label: 注册读者
   - id: SCREEN-BOOK-LIST
     name: 图书列表
     screenType: LIST
@@ -54,6 +58,31 @@ screens:
         name: 归还图书
         behaviorRef: Book_returnBack
         elementId: 归还
+    elements:
+      - id: bookNo
+        type: TEXTBOX
+        label: 图书编号
+        io: I
+      - id: title
+        type: TEXTBOX
+        label: 书名
+        io: I
+      - id: 搜索
+        type: BUTTON
+        label: 搜索
+      - id: 新增
+        type: BUTTON
+        label: 新增
+      - id: 借出
+        type: BUTTON
+        label: 借出
+      - id: 归还
+        type: BUTTON
+        label: 归还
+      - id: grid
+        type: GRID
+        label: 图书列表
+        io: O
   - id: SCREEN-BORROW-LIST
     name: 借阅管理
     screenType: LIST
@@ -72,3 +101,19 @@ screens:
         name: 查询借阅
         behaviorRef: BorrowRecord_queryHistory
         elementId: 查询
+    elements:
+      - id: borrowNo
+        type: TEXTBOX
+        label: 借阅单号
+        io: I
+      - id: borrowStatus
+        type: COMBO
+        label: 借阅状态
+        io: I
+      - id: 查询
+        type: BUTTON
+        label: 查询
+      - id: grid
+        type: GRID
+        label: 借阅列表
+        io: O

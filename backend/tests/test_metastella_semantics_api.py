@@ -49,8 +49,8 @@ def test_validate_endpoint_green_for_library_smoke() -> None:
     data = resp.json()["data"]
     assert data["valid"] is True
     assert data["errors"] == []
-    # M2~MU 深度校验章未落地——显式留痕（占位≠通过伪装）
-    assert data["validators_pending"] == ["ACTOR", "BEHAVIOR", "FLOW", "RULE", "UI"]
+    # 08b：最小集六章 validator 全在位，pending 清零（G2「validator 全绿」口径）
+    assert data["validators_pending"] == []
 
 
 def test_publish_endpoint_returns_fingerprint() -> None:
