@@ -272,12 +272,13 @@ class _EmptySession:
 
 
 def _crud(db: object, model: type | None = None):
-    """构造 CRUD 实例（默认挂在一个真实模型上，避免测试私自注册新模型污染 metadata）。"""
+    """构造 CRUD 实例（默认挂在非租户的 MenuModel 上——RoleModel 等已带 TenantMixin，
+    构造期 fail-closed 会先于驱动异常触发，干扰本测试「原始异常冒泡」命题）。"""
     from app.core.base_crud import CRUDBase
     from app.core.base_schema import AuthSchema
-    from app.modules.system.role.model import RoleModel
+    from app.modules.system.menu.model import MenuModel
 
-    return CRUDBase(model=model or RoleModel, auth=AuthSchema(), db=db)  # type: ignore[arg-type]
+    return CRUDBase(model=model or MenuModel, auth=AuthSchema(), db=db)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(

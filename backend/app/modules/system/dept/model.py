@@ -4,13 +4,14 @@ from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.base_model import ModelMixin, UserMixin
+from app.core.tenancy import TenantMixin
 
 if TYPE_CHECKING:
     from app.modules.system.role.model import RoleModel
     from app.modules.system.user.model import UserModel
 
 
-class DeptModel(ModelMixin, UserMixin):
+class DeptModel(ModelMixin, UserMixin, TenantMixin):
     """部门模型"""
 
     __tablename__: str = "sys_dept"

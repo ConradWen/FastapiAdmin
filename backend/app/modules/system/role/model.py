@@ -4,6 +4,7 @@ from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.base_model import MappedBase, ModelMixin, UserMixin
+from app.core.tenancy import TenantMixin
 
 if TYPE_CHECKING:
     from app.modules.system.dept.model import DeptModel
@@ -58,7 +59,7 @@ class RoleDeptsModel(MappedBase):
     )
 
 
-class RoleModel(ModelMixin, UserMixin):
+class RoleModel(ModelMixin, UserMixin, TenantMixin):
     """角色模型"""
 
     __tablename__: str = "sys_role"
