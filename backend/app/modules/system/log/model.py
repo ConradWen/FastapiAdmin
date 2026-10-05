@@ -3,6 +3,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.config.setting import settings
 from app.core.base_model import ModelMixin
+from app.core.tenancy import TenantMixin
 
 
 def get_log_text_column_type():
@@ -37,7 +38,7 @@ class LoginLogModel(ModelMixin):
     msg: Mapped[str | None] = mapped_column(String(255), nullable=True, comment="提示消息")
 
 
-class OperationLogModel(ModelMixin):
+class OperationLogModel(ModelMixin, TenantMixin):
     """操作日志模型"""
 
     __tablename__: str = "sys_operation_log"

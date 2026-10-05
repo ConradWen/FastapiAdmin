@@ -4,12 +4,13 @@ from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.core.base_model import ModelMixin, UserMixin
+from app.core.tenancy import TenantMixin
 
 if TYPE_CHECKING:
     from app.modules.system.user.model import UserModel
 
 
-class TicketModel(ModelMixin, UserMixin):
+class TicketModel(ModelMixin, UserMixin, TenantMixin):
     """工单模型 — 用户提交的建议和反馈
     status: 0=待处理 1=处理中 2=已完成 3=已关闭
     """

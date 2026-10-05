@@ -2,9 +2,10 @@ from sqlalchemy import Boolean, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.base_model import ModelMixin
+from app.core.tenancy import TenantMixin
 
 
-class ParamsModel(ModelMixin):
+class ParamsModel(ModelMixin, TenantMixin):
     """系统参数表"""
 
     __tablename__: str = "sys_param"

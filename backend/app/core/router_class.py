@@ -56,12 +56,19 @@ class OperationLogRecord(TypedDict):
 
 
 async def _write_operation_log_async(log_data: OperationLogRecord) -> None:
-    """落库操作日志（BackgroundTask 中执行；失败仅告警，不影响响应）。"""
+    """落库操作日志（BackgroundTask 中执行；失败仅告警，不影响响应）。
+
+    租户归属：有会话上下文用当前租户；公开路由（登录前/无 token）落默认租户——
+    审计行必须存在，不允许因缺上下文被静默吞掉。
+    """
+    from app.core.tenancy import DEFAULT_TENANT_ID, current_tenant, set_current_tenant
     from app.modules.system.log.model import OperationLogModel  # 延迟导入：core 导入期不依赖业务层（守卫不变式 3）
 
+    tenant_id = current_tenant.get() or DEFAULT_TENANT_ID
     try:
-        async with async_db_session() as session, session.begin():
-            session.add(OperationLogModel(**log_data))
+        with set_current_tenant(tenant_id):
+            async with async_db_session() as session, session.begin():
+                session.add(OperationLogModel(**log_data))
     except Exception:
         logger.exception("操作日志写入失败: path={}", log_data.get("request_path"))
 

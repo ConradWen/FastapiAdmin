@@ -2,13 +2,15 @@ from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.base_model import ModelMixin
+from app.core.tenancy import TenantMixin
 
 
-class DictTypeModel(ModelMixin):
-    """字典类型表"""
+class DictTypeModel(ModelMixin, TenantMixin):
+    """字典类型表（平台共享读：ORM 层跳过租户过滤，CRUD 层处理 tenant OR 默认租户）"""
 
     __tablename__: str = "sys_dict_type"
     __table_args__: dict[str, str] = {"comment": "字典类型表"}
+    __platform_data_shared__ = True
 
     dict_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True, comment="字典名称")
     dict_type: Mapped[str] = mapped_column(String(255), nullable=False, index=True, unique=True, comment="字典类型")
@@ -17,11 +19,12 @@ class DictTypeModel(ModelMixin):
     dict_data_list: Mapped[list["DictDataModel"]] = relationship("DictDataModel", back_populates="dict_type_obj")
 
 
-class DictDataModel(ModelMixin):
-    """字典数据表"""
+class DictDataModel(ModelMixin, TenantMixin):
+    """字典数据表（平台共享读，同 DictTypeModel）"""
 
     __tablename__: str = "sys_dict_data"
     __table_args__: dict[str, str] = {"comment": "字典数据表"}
+    __platform_data_shared__ = True
 
     status: Mapped[int] = mapped_column(Integer, default=0, nullable=False, index=True, comment="状态(0:启动 1:停用)")
     description: Mapped[str | None] = mapped_column(Text, default=None, nullable=True, comment="备注")
