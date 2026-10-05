@@ -36,7 +36,9 @@ def list_{camel}(request: Request):
     except ValueError:
         raise HTTPException(400, detail="invalid tenant id") from None
 
-    dsn = os.environ.get("DATABASE_URI", DEFAULT_DSN)
+    dsn = os.environ.get("DATABASE_URI", "")
+    if not dsn:
+        raise HTTPException(500, detail="DATABASE_URI not configured")
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT to_jsonb(t) FROM {table} t WHERE deleted = false AND tenant_id = %s LIMIT 100",
@@ -46,16 +48,16 @@ def list_{camel}(request: Request):
 '''
         )
 
-    main_py = f'''"""MetaStella 生成物——{package_name}（指纹 {fingerprint[:12]}；D1.06 确定性产物）"""
+    main_py = f'''"""MetaStella 生成物——{package_name}（指纹 {fingerprint[:12]}；D1.06 确定性产物）
+
+安全边界（诚实登记，阶段审计 B-C4）：`X-Tenant-Id` 为**未鉴权的租户参数面**——
+行级过滤参数化已做，但请求头身份自报，不能当隔离用；OIDC 委托认证/完整 RBAC 随 M3/B-4 接入。
+DSN 一律运行时注入（DATABASE_URI），产物内不嵌任何凭据（镜像无密钥不变量）。
+"""
 
 import os
 
 from fastapi import FastAPI, HTTPException, Request
-
-DEFAULT_DSN = os.environ.get(
-    "DEFAULT_DSN",
-    "postgresql://metastella:metastella_dev@postgres:5432/metastella",
-)
 
 app = FastAPI(title="{package_name}")
 

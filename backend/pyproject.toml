@@ -116,6 +116,7 @@ exclude = [
     "node_modules",
     "site-packages",
     "venv",
+    "app/alembic/versions",
 ]
 extend-include = ["*.pyw"]
 

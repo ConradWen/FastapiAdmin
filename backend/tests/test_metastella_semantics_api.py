@@ -89,3 +89,28 @@ def test_migration_endpoint_deterministic() -> None:
 def test_unknown_package_returns_404() -> None:
     resp = _client().get("/metastella/packages/no_such_pkg/manifest")
     assert resp.status_code == 404
+
+
+def test_generation_endpoints_gate_invalid_package(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """阶段审计 B-C2：生成链与发布链同门禁——坏包不得产出 DDL/迁移。"""
+    from app.plugin.module_metastella.semantics import controller as cmod
+
+    pkg = tmp_path / "bad_pkg"
+    pkg.mkdir()
+    (pkg / "manifest.yaml").write_text(
+        "schema_version: \"1.0.0\"\nmodel_type: MANIFEST\nmodel_files: [m1.yaml]\n", encoding="utf-8"
+    )
+    (pkg / "m1.yaml").write_text(
+        "schema_version: \"1.0.0\"\nmodel_type: OBJECT\naggregates:\n"
+        "  - id: AGG-X-001\n    name: 坏聚合\n    alias: My Book\n"
+        "    aggregateType: AGGREGATE_ROOT\n    attributes: []\n"
+        "    entities: []\n    valueObjects: []\n    invariants: []\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cmod, "PACKAGES_ROOT", tmp_path)
+    client = _client()
+    for path in ("/ddl", "/migration"):
+        resp = client.post(f"/metastella/packages/bad_pkg{path}")
+        assert resp.status_code == 422, (path, resp.text)
+    ok = client.post("/metastella/packages/bad_pkg/publish")
+    assert ok.status_code == 422, ok.text  # 发布链同样被拒（同一坏包）

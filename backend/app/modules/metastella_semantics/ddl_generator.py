@@ -29,17 +29,19 @@ _PG_TYPES: dict[str, str] = {
 }
 
 
-def generate_ddl(family: dict[str, Any]) -> str:
-    """从语义包族生成完整 PG DDL（当前消费 M1 OBJECT；其余模型类型不产出表）。"""
+def generate_ddl_statements(family: dict[str, Any]) -> list[str]:
+    """逐条建表语句（结构化出口，供迁移生成器直接迭代——禁对 DDL 文本再 split(';')）。"""
     m1 = family.get("OBJECT")
     if not isinstance(m1, dict):
         raise ModelStructureError("generate_ddl 需要 family['OBJECT']（M1 对象模型）")
 
     aggregates = sorted(m1.get("aggregates", []), key=lambda a: a.get("alias", ""))
-    statements: list[str] = []
-    for agg in aggregates:
-        statements.append(_table_ddl(agg))
-    return "\n\n".join(statements) + "\n"
+    return [_table_ddl(agg) for agg in aggregates]
+
+
+def generate_ddl(family: dict[str, Any]) -> str:
+    """从语义包族生成完整 PG DDL（当前消费 M1 OBJECT；其余模型类型不产出表）。"""
+    return "\n\n".join(generate_ddl_statements(family)) + "\n"
 
 
 def _table_ddl(agg: dict[str, Any]) -> str:

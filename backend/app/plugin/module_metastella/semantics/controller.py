@@ -65,6 +65,24 @@ def _load_family_or_404(pkg: str) -> dict:
         raise CustomException(msg=str(exc), code=RET.UNPROCESSABLE_ENTITY.code) from exc
 
 
+def _validated_family_or_404(pkg: str) -> dict:
+    """生成链门禁（阶段审计 B-C2）：DDL/迁移产物必须过与发布同一 §12 门禁——
+    语义包是不可信输入，坏包不得变成 DDL/迁移/应用代码（'AI 不进编译核心'的前提）。"""
+    family = _load_family_or_404(pkg)
+    for model_type in sorted(family):
+        try:
+            validate_model(family[model_type])
+        except NotImplementedError:
+            continue  # 扩展族占位章：不阻断（发布记录里另有留痕）
+        except SemanticSchemaError as exc:
+            raise CustomException(msg=str(exc), code=RET.UNPROCESSABLE_ENTITY.code) from exc
+    try:
+        check_family(family, package=pkg, raise_on_error=True)
+    except SemanticSchemaError as exc:
+        raise CustomException(msg=str(exc), code=RET.UNPROCESSABLE_ENTITY.code) from exc
+    return family
+
+
 @MetastellaRouter.get("/{pkg}/manifest", summary="装载语义包族")
 async def get_package_manifest_controller(pkg: str):
     family = _load_family_or_404(pkg)
@@ -118,18 +136,18 @@ async def post_package_publish_controller(pkg: str):
     return SuccessResponse(data=record, msg="发布成功")
 
 
-@MetastellaRouter.post("/{pkg}/ddl", summary="生成 PG DDL（D1.06 确定性）")
+@MetastellaRouter.post("/{pkg}/ddl", summary="生成 PG DDL（D1.06 确定性，过 §12 门禁）")
 async def post_package_ddl_controller(pkg: str):
-    family = _load_family_or_404(pkg)
+    family = _validated_family_or_404(pkg)
     return SuccessResponse(
         data={"package": pkg, "fingerprint": compute_package_fingerprint(family), "ddl": generate_ddl(family)},
         msg="生成成功",
     )
 
 
-@MetastellaRouter.post("/{pkg}/migration", summary="生成 Alembic 迁移脚本（D11.04 生成器唯一出处）")
+@MetastellaRouter.post("/{pkg}/migration", summary="生成 Alembic 迁移脚本（D11.04 生成器唯一出处，过 §12 门禁）")
 async def post_package_migration_controller(pkg: str):
-    family = _load_family_or_404(pkg)
+    family = _validated_family_or_404(pkg)
     return SuccessResponse(
         data={
             "package": pkg,

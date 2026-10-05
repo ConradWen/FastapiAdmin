@@ -1,31 +1,30 @@
 """Alembic 迁移脚本生成器（D11.04：仅由生成器确定性产出；D11.02：版本钉语义包指纹）。
 
-首通口径：单包全量建表迁移（upgrade=执行 generate_ddl 产物，downgrade=逆序 DROP）。
+首通口径：单包全量建表迁移（upgrade=逐语句 op.execute，downgrade=逆序 DROP）。
 包间 diff 增量迁移（D11.04 全义）=M2 中期生成链深化。
+
+安全纪律（阶段审计 B-C1 修复）：生成器把语义包视为**不可信输入**——
+每条语句经 `repr()` 作为 Python 字面量嵌入（三引号/换行/分号一律无法越狱成顶层代码），
+且直接迭代结构化语句列表（不对 DDL 文本做分号切分回拼）。
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from .ddl_generator import generate_ddl
+from .ddl_generator import _table_name, generate_ddl_statements
 from .publish import compute_package_fingerprint
 
 
 def generate_migration(family: dict[str, Any]) -> str:
-    """由语义包族确定性生成 Alembic revision 脚本文本。
-
-    同内容必同输出：DDL 与 downgrade 均按聚合 alias 显式排序；revision id=指纹前 12 位。
-    """
+    """由语义包族确定性生成 Alembic revision 脚本文本（同内容必同输出）。"""
     fingerprint = compute_package_fingerprint(family)
-    ddl = generate_ddl(family)
-    tables = [
-        line.split("CREATE TABLE ")[1].split(" (")[0]
-        for line in ddl.splitlines()
-        if line.startswith("CREATE TABLE ")
-    ]
+    statements = generate_ddl_statements(family)
+    m1 = family.get("OBJECT", {})
+    tables = [_table_name(str(a.get("alias", ""))) for a in sorted(m1.get("aggregates", []), key=lambda a: a.get("alias", ""))]
+
+    body = "\n".join(f"    op.execute({stmt!r})" for stmt in statements)
     drops = "\n".join(f'    op.execute("DROP TABLE IF EXISTS {t} CASCADE")' for t in reversed(tables))
-    body = "\n".join(f'    op.execute("""{stmt.strip()}""")' for stmt in ddl.split(";") if stmt.strip())
 
     return f'''"""MetaStella 生成迁移——语义包 {fingerprint[:12]}（D11.02 钉指纹；D11.04 生成器产物）"""
 
