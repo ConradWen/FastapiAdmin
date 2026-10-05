@@ -57,6 +57,8 @@ services:
         DB: postgres
     image: metastella-backend:dev
     container_name: metastella-backend
+    # 底座镜像 CMD 写死 --env=prod（HTTPS 强跳+严格域白名单）；本机 dev 栈显式覆盖
+    command: ["python", "main.py", "run", "--env=dev"]
     restart: unless-stopped
     environment:
       ENVIRONMENT: dev
@@ -75,6 +77,8 @@ services:
       SECRET_KEY: metastella_dev_insecure_key_0123456789abcdef
       DEMO_ENABLE: "false"
       LOGGER_LEVEL: INFO
+      # O-9 首段基线后调参：单 worker 下 ddl×50 并发 p50 908ms→多 worker 复核（.scratch/o9-benchmark/）
+      WORKERS: "2"
     ports:
       - "127.0.0.1:58001:8001"
     volumes:
