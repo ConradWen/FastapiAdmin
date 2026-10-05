@@ -16,6 +16,7 @@ from app.core.exceptions import CustomException
 from app.core.logger import logger
 from app.core.redis_crud import RedisCURD
 from app.core.security import OAuth2Schema, decode_access_token
+from app.core.tenancy import current_superadmin, current_tenant
 
 
 async def db_getter() -> AsyncGenerator[AsyncSession, None]:
@@ -91,8 +92,13 @@ async def _authenticate(
     token: str,
     db: AsyncSession,
     redis: Redis,
+    *,
+    allow_pending: bool = False,
 ) -> AuthSchema:
-    """核心认证逻辑（HTTP 与 WebSocket 共享）"""
+    """核心认证逻辑（HTTP 与 WebSocket 共享）。
+
+    allow_pending=True 仅供 select-tenant 流程使用（pending 会话唯一可访问端点）。
+    """
     if not token:
         raise CustomException(msg="认证已失效", code=RET.UNAUTHORIZED.code)
 
@@ -168,6 +174,15 @@ async def _authenticate(
     if not user_id:
         raise CustomException(msg="认证已失效", code=RET.UNAUTHORIZED.code)
 
+    # 租户门控（W2·11c）：pending=登录未绑定租户的多租户中间态；ENFORCE off 放行只留痕（11d 挂列回填后全量）
+    tenant_id = user_info.get("tenant_id")
+    is_super_admin = bool(user_info.get("is_super_admin", user_info.get("is_superuser", False)))
+    tenant_pending = bool(user_info.get("tenant_pending")) and not is_super_admin
+    if tenant_pending and settings.TENANT_ENFORCE and not allow_pending:
+        raise CustomException(msg="会话未绑定租户，请先选择租户", code=RET.FORBIDDEN.code)
+    current_tenant.set(tenant_id)
+    current_superadmin.set(is_super_admin)
+
     # 每请求查库校验用户仍存在且未删除：token 只证明签发时身份，不证明现在。
     from app.modules.system.user.model import UserModel  # 延迟导入：core 导入期不依赖业务层（守卫不变式 3）
 
@@ -186,6 +201,9 @@ async def _authenticate(
         user=user,
         permissions=user_info.get("permissions", []),
         menu_ids=user_info.get("menu_ids", []),
+        tenant_id=tenant_id,
+        is_super_admin=is_super_admin,
+        tenant_pending=tenant_pending,
     )
 
 

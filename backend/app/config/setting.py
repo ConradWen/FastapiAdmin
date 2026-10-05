@@ -120,6 +120,9 @@ class Settings(BaseSettings):
     # ******************** 验证码配置 ******************* #
     # ================================================= #
     CAPTCHA_ENABLE: bool = True  # 是否启用验证码
+    # 租户强制灰度门（W2·11c）：off=pending 会话放行只留痕（11d 挂列回填前的安全默认）；
+    # on=无租户 pending 会话 403（select-tenant 白名单除外）。11d 全量后翻 True。
+    TENANT_ENFORCE: bool = False
     CAPTCHA_EXPIRE_SECONDS: int = 60 * 1  # 验证码过期时间(秒) 1分钟
     CAPTCHA_MIN_VERIFY_SECONDS: float = 0.2
 

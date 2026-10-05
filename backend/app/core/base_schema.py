@@ -199,6 +199,7 @@ class CoreUserSchema(BaseModel):
     name: str | None = Field(default=None, description="名称")
     dept_id: int | None = Field(default=None, description="部门ID")
     is_superuser: bool = Field(default=False, description="是否超管")
+    tenant_id: int | None = Field(default=None, description="所属租户（11d 挂列；未挂载时 None）")
 
 
 class AuthSchema(BaseModel):
@@ -209,3 +210,6 @@ class AuthSchema(BaseModel):
     user: CoreUserSchema = Field(default_factory=CoreUserSchema, description="用户信息", exclude=True)
     permissions: list[str] = Field(default_factory=list, description="用户权限标识列表")
     menu_ids: list[int] = Field(default_factory=list, description="角色授权的菜单ID列表")
+    tenant_id: int | None = Field(default=None, description="会话绑定的租户（JWT/session claims）")
+    is_super_admin: bool = Field(default=False, description="会话是否平台超管（不受租户过滤）")
+    tenant_pending: bool = Field(default=False, description="待选择租户（多租户登录中间态）")
