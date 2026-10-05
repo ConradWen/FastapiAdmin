@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any
 
-from sqlalchemy import Integer, event
+from sqlalchemy import ForeignKey, Integer, event
 from sqlalchemy.orm import Mapped, Session, mapped_column, with_loader_criteria
 
 current_tenant: ContextVar[int | None] = ContextVar("current_tenant", default=None)
@@ -19,9 +19,19 @@ current_superadmin: ContextVar[bool] = ContextVar("current_superadmin", default=
 
 
 class TenantMixin:
-    """租户列（写侧由 before_flush 事件自动填充；读侧配合 apply_tenant_filter）。"""
+    """租户列（写侧由 init 事件自动填充；读侧配合 11b 全自动注入）。
 
-    tenant_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    server_default='1' 使「给非空表加 NOT NULL 列」可行（存量行回填默认租户）；
+    FK use_alter 让 create_all/迁移在两张表都在后再加约束（对齐 base_model dept_id 范式）。
+    """
+
+    tenant_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("platform_tenant.id", ondelete="RESTRICT", use_alter=True),
+        nullable=False,
+        server_default="1",
+        index=True,
+    )
 
 
 @contextmanager

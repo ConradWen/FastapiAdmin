@@ -11,6 +11,7 @@ from app.config.setting import settings
 from app.core.base_model import MappedBase
 from app.core.database import async_db_session, async_engine, create_tables
 from app.core.logger import logger
+from app.core.tenancy import set_current_tenant
 from app.modules.system.dept.model import DeptModel
 from app.modules.system.dict.model import DictDataModel, DictTypeModel
 from app.modules.system.menu.model import MenuModel
@@ -20,6 +21,7 @@ from app.modules.system.user.model import UserModel, UserRolesModel
 from app.modules.system.versions.model import VersionModel
 from app.modules.task.cronjob.node.model import NodeModel
 from app.modules.task.storage.node.model import StorageNodeModel
+from app.modules.tenant.model import PlatformTenantModel
 from app.utils.import_util import ImportUtil
 
 # 导入全部模型：与 alembic env.py 保持一致，确保全局 MapperRegistry 的 FK 引用可完整解析
@@ -31,6 +33,7 @@ class InitializeData:
 
     # 按依赖关系排序：先基础表，再关联表
     prepare_init_models: list[type] = [
+        PlatformTenantModel,
         MenuModel,
         DeptModel,
         ParamsModel,
@@ -52,7 +55,10 @@ class InitializeData:
         await self.__apply_migrations()
 
         async with async_db_session() as session, session.begin():
-            await self.__init_data(session)
+            # 种子期以默认租户上下文写入（11d 挂 TenantMixin 后写侧 fail-closed 需上下文）；
+            # 平台初始化属系统级动作，不代表任何真实租户归属。
+            with set_current_tenant(1):
+                await self.__init_data(session)
 
         # 内置本地存储源的根目录（种子节点 host 指向 static/upload），保证开箱可浏览
         (STATIC_DIR / "upload").mkdir(parents=True, exist_ok=True)

@@ -5,6 +5,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.base_model import MappedBase, ModelMixin, UserMixin
+from app.core.tenancy import TenantMixin
 
 if TYPE_CHECKING:
     from app.modules.system.dept.model import DeptModel
@@ -58,7 +59,7 @@ class UserPositionsModel(MappedBase):
     )
 
 
-class UserModel(ModelMixin, UserMixin):
+class UserModel(ModelMixin, UserMixin, TenantMixin):
     """用户模型
     """
 

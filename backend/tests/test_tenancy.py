@@ -20,6 +20,15 @@ class Base(DeclarativeBase):
     metadata = MetaData()
 
 
+class PlatformTenantStub(Base):
+    """占位租户表（TenantMixin 的 FK 目标；真表见 app/modules/tenant/model.py）。"""
+
+    __tablename__ = "platform_tenant"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(64), default="t")
+
+
 class Widget(Base, TenantMixin):
     __tablename__ = "t_widget_test"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
