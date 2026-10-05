@@ -126,10 +126,11 @@ def test_flow_transition_endpoints_must_exist_in_flow() -> None:
 
 
 def test_ui_layout_element_ids_must_exist_in_elements() -> None:
+    """08c 深对齐后：elements 清空 → layout token 与 actionPoint.elementId 双重违规。"""
     doc = _load()["UI"]
     screen = next(s for s in doc["screens"] if s["id"] == "SCREEN-BOOK-LIST")
     screen["elements"] = []
-    with pytest.raises(ModelStructureError, match="elementId"):
+    with pytest.raises(ModelStructureError, match="D8.04"):
         validate_model(doc)
 
 

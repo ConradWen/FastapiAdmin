@@ -1,11 +1,13 @@
 """MU 界面模型 validator（v9 §8.2 元素表关键项 + D8.04 elementId 对齐）。
 
-本批口径：屏幕/元素/操作点结构面 + actionPoint.elementId 必须存在于 elements（D8.04 的
-id 存在性半边）；layout ASCII 与 io/required 与 M1 属性的深对齐=08c（依赖 canonical dataBinding）。
+本批口径（08c 已扩）：屏幕/元素/操作点结构面 + actionPoint.elementId 必须存在于 elements
+（D8.04）；layout ASCII 方括号 token 必须存在于 elements（翻页/数字豁免，§8.7-8）；
+io/required 与 M1 属性逐项联查=后续批（依赖 canonical dataBinding）。
 """
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .errors import ModelStructureError
@@ -24,6 +26,8 @@ _ELEMENT_TYPES = {
     "LABEL",
 }
 _IO_TYPES = {"I", "O", "I_O"}
+_LAYOUT_TOKEN_RE = re.compile(r"\[([^\][|]+?)\]")
+_PAGINATION_RE = re.compile(r"^(\d+|>|»|<|<<|\.\.+)$")
 
 
 def validate_ui_model(doc: dict[str, Any]) -> None:
@@ -65,6 +69,17 @@ def validate_ui_model(doc: dict[str, Any]) -> None:
                 raise ModelStructureError(f"屏幕 {sid} 元素 {eid}: io 须为 I/O/I_O（v9 §8.2.4）")
             if "required" in element and not isinstance(element["required"], bool):
                 raise ModelStructureError(f"屏幕 {sid} 元素 {eid}: required 须为布尔（v9 §8.2.4）")
+
+        layout = screen.get("layout", "")
+        if isinstance(layout, str) and layout.strip():
+            for raw_token in _LAYOUT_TOKEN_RE.findall(layout):
+                token = raw_token.strip().rstrip("_.")
+                if not token or _PAGINATION_RE.match(token):
+                    continue
+                if token not in element_ids:
+                    raise ModelStructureError(
+                        f"屏幕 {sid}: layout 控件 {token!r} 不在 elements 中（D8.04/§8.7-8）"
+                    )
 
         for menu in screen.get("menus", []) or []:
             if not isinstance(menu, dict):

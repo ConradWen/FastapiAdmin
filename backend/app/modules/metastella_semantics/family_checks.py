@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .errors import ModelStructureError
+from .m2_validator import endpoint_from_behavior_id
 
 _PACKAGE_RE = re.compile(r"^PERM-[A-Z][A-Z0-9]*(-[A-Z0-9]+)+$")
 _HUMAN_TASK_TYPES = {"HUMAN_TASK", "APPROVAL_TASK"}
@@ -40,6 +41,7 @@ def check_family(
     """跑族级机检；返回分级结果。raise_on_error=True 时首个 error 即抛 ModelStructureError。"""
     result = FamilyCheckResult(package=package)
     _check_references(family, result)
+    _check_api_surface(family, result)
     _check_permissions(family, result)
     _check_roles(family, result)
     _check_flow(family, result)
@@ -119,6 +121,22 @@ def _check_references(family: Mapping[str, Any], result: FamilyCheckResult) -> N
             ref = step.get("behaviorRef")
             if ref and ref not in behavior_ids:
                 result.errors.append(f"引用完整性：流程 {flow.get('id')} 活动 {step.get('id')} behaviorRef={ref} 不存在（§12）")
+
+
+# ---- 行为-API 面（D2.02：endpoint 由 behavior id 钉死推导，族内唯一） ----
+
+
+def _check_api_surface(family: Mapping[str, Any], result: FamilyCheckResult) -> None:
+    seen: dict[str, str] = {}
+    for b in family.get("BEHAVIOR", {}).get("behaviors", []):
+        if not isinstance(b, dict) or not isinstance(b.get("id"), str):
+            continue
+        ep = endpoint_from_behavior_id(b["id"])
+        if ep in seen:
+            result.errors.append(
+                f"行为-API 面（D2.02）：行为 {b['id']} 与 {seen[ep]} 推导出同一 endpoint {ep}——API 面撞车"
+            )
+        seen[ep] = b["id"]
 
 
 # ---- 权限位（D2.05/D5.02） ----

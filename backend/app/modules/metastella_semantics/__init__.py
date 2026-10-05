@@ -17,6 +17,7 @@ from .errors import (
 )
 from .family_checks import FamilyCheckResult, check_family
 from .loader import load_model_family, load_model_file
+from .m2_validator import endpoint_from_behavior_id
 from .publish import ModelPackageAlreadyPublishedError, compute_package_fingerprint, publish_package
 from .registry import MINIMAL_SET
 from .schema_version import extract_schema_version
@@ -32,6 +33,7 @@ __all__ = [
     "generate_ddl",
     "generate_migration",
     "generate_app_bundle",
+    "endpoint_from_behavior_id",
     "check_family",
     "FamilyCheckResult",
     "MINIMAL_SET",

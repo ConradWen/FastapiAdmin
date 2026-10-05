@@ -12,6 +12,16 @@ _TRIGGER_TYPES = {"USER_ACTION", "SYSTEM"}
 _BEHAVIOR_ID_RE = re.compile(r"^[A-Z][A-Za-z0-9]*_[a-z][A-Za-z0-9]*$")  # {Entity}_{action}（D2.02 前提）
 
 
+def _kebab(token: str) -> str:
+    return re.sub(r"(?<=[a-z0-9])([A-Z])", r"-\1", token).lower()
+
+
+def endpoint_from_behavior_id(bid: str) -> str:
+    """D2.02：endpoint 由 behavior id 确定性推导 `/{entity-kebab}/{action-kebab}`（钉死不改）。"""
+    entity, _, action = bid.partition("_")
+    return f"/{_kebab(entity)}/{_kebab(action)}"
+
+
 def validate_behavior_model(doc: dict[str, Any]) -> None:
     behaviors = doc.get("behaviors")
     if not isinstance(behaviors, list) or not behaviors:
@@ -30,6 +40,13 @@ def validate_behavior_model(doc: dict[str, Any]) -> None:
             raise ModelStructureError(f"行为 id 必须唯一: {bid}")
         by_id[bid] = b
         _require_string(b, "name", f"行为 {bid}")
+
+        # D2.02 一致性：id 的 {Entity} 段必须等于 ownerEntity
+        owner = b.get("ownerEntity")
+        if owner and bid.partition("_")[0] != owner:
+            raise ModelStructureError(
+                f"行为 {bid}: id 实体段与 ownerEntity={owner} 不一致——endpoint 推导歧义（D2.02）"
+            )
 
         behavior_type = _require_string(b, "behaviorType", f"行为 {bid}")
         if behavior_type not in _BEHAVIOR_TYPES:
