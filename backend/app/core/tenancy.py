@@ -108,29 +108,71 @@ def _fill_tenant_on_init(target: TenantMixin, args: Any, kwargs: Any) -> None:
     target.__dict__["tenant_id"] = tenant_id
 
 
-def _tenant_subclasses(cls: type) -> list[type]:
-    subs: list[type] = []
+def _walk_tenant_models(cls: type, *, include_shared: bool, acc: list[type]) -> None:
+    """递归收集 cls 下已映射真实表的租户模型。
+
+    判据不能用 `__abstract__`——具体模型从 MappedBase/ModelMixin **继承**该属性=True 且不复写，
+    旧实现因此恒得空集、`do_orm_execute` 注入形同虚设（阶段审计根因修复）。
+    改判"有没有真实 mapper/表"。
+    """
+    from sqlalchemy import inspect as sa_inspect
+
     for sub in cls.__subclasses__():
-        if not getattr(sub, "__abstract__", False) and not getattr(sub, "__platform_data_shared__", False):
-            subs.append(sub)
-        subs.extend(_tenant_subclasses(sub))
-    return subs
+        insp = sa_inspect(sub, raiseerr=False)
+        concrete = insp is not None and getattr(insp, "local_table", None) is not None
+        shared = bool(getattr(sub, "__platform_data_shared__", False))
+        if concrete and (include_shared or not shared):
+            acc.append(sub)
+        _walk_tenant_models(sub, include_shared=include_shared, acc=acc)
+
+
+def _tenant_models(*, include_shared: bool) -> list[type]:
+    """已映射真实表的租户模型集。
+
+    SELECT 跳过共享读模型（读策略由 CRUD 层 `tenant_read_condition` 负责）；
+    DML 包含共享模型（写保护只严不松：普通租户不得改删平台默认租户行）。
+    """
+    acc: list[type] = []
+    _walk_tenant_models(TenantMixin, include_shared=include_shared, acc=acc)
+    return acc
+
+
+@event.listens_for(Session, "before_flush")
+def _guard_tenant_writes(session: Session, _flush_context: Any, instances: Any) -> None:  # noqa: ARG001
+    """写侧守卫（阶段审计 A-C2）：flush 的对象级 UPDATE/DELETE 不经 do_orm_execute，
+    普通租户上下文里脏/删对象必须属本租户——共享读模型读出平台行后 setattr 也拦得住。"""
+    tid = current_tenant.get()
+    if tid is None or current_superadmin.get():
+        return
+    for obj in session.dirty:
+        if not isinstance(obj, TenantMixin):
+            continue
+        if obj.tenant_id != tid:
+            raise RuntimeError(
+                f"NFR-5：租户 {tid} 不得修改他租户/平台资源 {type(obj).__name__}(id={getattr(obj, 'id', None)})"
+            )
+    for obj in session.deleted:
+        if isinstance(obj, TenantMixin) and obj.tenant_id != tid:
+            raise RuntimeError(
+                f"NFR-5：租户 {tid} 不得删除他租户/平台资源 {type(obj).__name__}(id={getattr(obj, 'id', None)})"
+            )
 
 
 @event.listens_for(Session, "do_orm_execute")
 def _inject_tenant_criteria(execute_state: Any) -> None:
-    """读/改/删全自动注入（11b）：SELECT=with_loader_criteria（含关系）；
-    ORM DML（update/delete）=对目标表显式追加 WHERE。超管/无上下文/共享读模型放行。"""
+    """读/改/删全自动注入（11b+审计修复）：SELECT=with_loader_criteria（含关系）；
+    ORM DML（update/delete）=对目标表显式追加 `tenant_id = 当前`（含共享模型）。
+    超管/无上下文放行；共享模型仅 SELECT 放行（读写不对称）。"""
     tid = current_tenant.get()
     if tid is None or current_superadmin.get():
         return
     stmt = execute_state.statement
     if execute_state.is_select:
-        for model in _tenant_subclasses(TenantMixin):
+        for model in _tenant_models(include_shared=False):
             stmt = stmt.options(with_loader_criteria(model, model.tenant_id == tid, include_aliases=True))
     elif execute_state.is_update or execute_state.is_delete:
         table_name = getattr(getattr(stmt, "table", None), "name", None)
-        for model in _tenant_subclasses(TenantMixin):
+        for model in _tenant_models(include_shared=True):
             if table_name is not None and getattr(model, "__tablename__", None) == table_name:
                 stmt = stmt.where(model.tenant_id == tid)
                 break

@@ -189,10 +189,10 @@ async def _authenticate(
     tenant_pending = bool(user_info.get("tenant_pending")) and not is_super_admin
     if tenant_pending and settings.TENANT_ENFORCE and not allow_pending:
         raise CustomException(msg="会话未绑定租户，请先选择租户", code=RET.FORBIDDEN.code)
-    current_tenant.set(tenant_id)
-    current_superadmin.set(is_super_admin)
 
     # 每请求查库校验用户仍存在且未删除：token 只证明签发时身份，不证明现在。
+    # 身份存在性查询按主键、**必须先于租户上下文设置**——否则多租户用户选定非主租户后，
+    # 本查询会被会话租户过滤而查不到自己 → 每请求 401 自锁（阶段审计 A-C1）。
     from app.modules.system.user.model import UserModel  # 延迟导入：core 导入期不依赖业务层（守卫不变式 3）
 
     user_obj = (
@@ -204,6 +204,9 @@ async def _authenticate(
     )
     if not user_obj:
         raise CustomException(msg="用户不存在", code=RET.UNAUTHORIZED.code)
+
+    current_tenant.set(tenant_id)
+    current_superadmin.set(is_super_admin)
 
     user = CoreUserSchema.model_validate(user_obj)
     return AuthSchema(
