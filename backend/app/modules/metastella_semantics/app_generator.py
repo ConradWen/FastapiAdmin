@@ -20,17 +20,29 @@ def generate_app_bundle(family: dict[str, Any], *, package_name: str) -> dict[st
     for agg in aggregates:
         alias = agg["alias"]
         table = _table_name(alias)
+        camel = alias[0].lower() + alias[1:]
         routes.append(
             f'''
 
 @app.get("/api/{alias}/list")
-def list_{alias[0].lower() + alias[1:]}():
+def list_{camel}(request: Request):
     import psycopg
+
+    tenant = request.headers.get("X-Tenant-Id")
+    if not tenant:
+        raise HTTPException(401, detail="X-Tenant-Id required")
+    try:
+        tenant_id = int(tenant)
+    except ValueError:
+        raise HTTPException(400, detail="invalid tenant id") from None
 
     dsn = os.environ.get("DATABASE_URI", DEFAULT_DSN)
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
-        cur.execute("SELECT to_jsonb(t) AS row FROM {table} t WHERE deleted = false LIMIT 100")
-        return {{"table": "{table}", "rows": [row for (row,) in cur.fetchall()]}}
+        cur.execute(
+            "SELECT to_jsonb(t) FROM {table} t WHERE deleted = false AND tenant_id = %s LIMIT 100",
+            (tenant_id,),
+        )
+        return {{"table": "{table}", "tenant_id": tenant_id, "rows": [row for (row,) in cur.fetchall()]}}
 '''
         )
 
@@ -38,7 +50,7 @@ def list_{alias[0].lower() + alias[1:]}():
 
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 
 DEFAULT_DSN = os.environ.get(
     "DEFAULT_DSN",

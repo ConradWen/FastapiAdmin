@@ -49,3 +49,12 @@ def test_bundle_has_aggregate_list_routes() -> None:
     bundle = generate_app_bundle(_load(), package_name="library_smoke")
     assert "/api/Book/list" in bundle["main.py"]
     assert "/api/BorrowRecord/list" in bundle["main.py"]
+
+
+def test_bundle_enforces_tenant_header_and_filter() -> None:
+    """W2b：生成物带租户面——X-Tenant-Id 缺失=401，查询强制 WHERE 过滤 tenant_id+deleted。"""
+    bundle = generate_app_bundle(_load(), package_name="library_smoke")
+    main = bundle["main.py"]
+    assert "X-Tenant-Id" in main
+    assert "401" in main
+    assert "WHERE deleted = false AND tenant_id = %s" in main
