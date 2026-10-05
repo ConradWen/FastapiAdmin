@@ -376,12 +376,33 @@ class SchedulerUtil:
         return "manual"
 
     @staticmethod
+    def _job_tenant_id(session: Session, node_ref: str) -> int:
+        """解析任务所属节点租户（id 命中或 code 命中，取不到=默认租户）。"""
+        from sqlalchemy import select
+
+        from app.core.tenancy import DEFAULT_TENANT_ID
+        from app.modules.task.cronjob.node.model import NodeModel
+
+        node = None
+        if node_ref.isdigit():
+            node = session.execute(select(NodeModel).where(NodeModel.id == int(node_ref))).scalar_one_or_none()
+        if node is None:
+            node = session.execute(select(NodeModel).where(NodeModel.code == node_ref)).scalar_one_or_none()
+        return getattr(node, "tenant_id", None) or DEFAULT_TENANT_ID
+
+    @staticmethod
     def _record_job_log(record: dict[str, Any]) -> None:
-        """任务执行结果落库（成功/失败均可写；APScheduler 事件线程同步执行，独立短连接）。"""
+        """任务执行结果落库（成功/失败均可写；APScheduler 事件线程同步执行，独立短连接）。
+
+        调度线程无请求上下文 → 租户从所属节点解析、取不到落默认租户（同 OpLog 兜底，禁静默丢日志）。
+        """
+        from app.core.tenancy import set_current_tenant
         from app.modules.task.cronjob.job.model import JobModel  # 延迟导入：core 导入期不依赖业务层（守卫不变式 3）
 
         with Session(engine) as session:
-            job_log = JobModel(**record)
+            tenant_id = SchedulerUtil._job_tenant_id(session, str(record["job_id"]))
+            with set_current_tenant(tenant_id):
+                job_log = JobModel(**record)
             session.add(job_log)
             session.commit()
             logger.info(f"执行日志已记录: job_id={record['job_id']}, id={job_log.id}")

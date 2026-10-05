@@ -2,9 +2,10 @@ from sqlalchemy import JSON, Boolean, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.base_model import ModelMixin, UserMixin
+from app.core.tenancy import TenantMixin
 
 
-class WorkflowModel(ModelMixin, UserMixin):
+class WorkflowModel(ModelMixin, UserMixin, TenantMixin):
     """传输流程：定义源节点 → 目标节点列表（parallel 多目标 / chain 链式）
 
     graph 仅存画布布局与展示字段（节点位置、连线样式），业务配置落于
@@ -21,7 +22,7 @@ class WorkflowModel(ModelMixin, UserMixin):
     description: Mapped[str | None] = mapped_column(Text, default=None, nullable=True, comment="备注")
 
 
-class WorkflowNodeModel(ModelMixin, UserMixin):
+class WorkflowNodeModel(ModelMixin, UserMixin, TenantMixin):
     """流程画布节点（业务配置）：节点关联的存储源与默认源目录。
 
     节点在画布上的位置/名称等布局字段存 flow.graph 的 nodes 项（key=node_key）。
@@ -36,7 +37,7 @@ class WorkflowNodeModel(ModelMixin, UserMixin):
     source_path: Mapped[str | None] = mapped_column(String(1024), default=None, nullable=True, comment="默认源目录")
 
 
-class WorkflowEdgeModel(ModelMixin, UserMixin):
+class WorkflowEdgeModel(ModelMixin, UserMixin, TenantMixin):
     """流程画布连线（业务配置）：传输方式与分片参数。
 
     连线的目标目录由目标节点的默认源目录决定（节点 source_path），连线不再配置路径。

@@ -2,9 +2,10 @@ from sqlalchemy import Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.base_model import ModelMixin
+from app.core.tenancy import TenantMixin
 
 
-class JobModel(ModelMixin):
+class JobModel(ModelMixin, TenantMixin):
     """任务执行日志表
     """
 

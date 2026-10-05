@@ -2,9 +2,10 @@ from sqlalchemy import Boolean, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.base_model import ModelMixin, UserMixin
+from app.core.tenancy import TenantMixin
 
 
-class NodeModel(ModelMixin, UserMixin):
+class NodeModel(ModelMixin, UserMixin, TenantMixin):
     """节点类型模型 - 动态定义节点类型
     """
 
