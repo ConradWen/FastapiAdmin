@@ -12,7 +12,7 @@ from contextvars import ContextVar
 from typing import Any
 
 from sqlalchemy import Integer, event
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, Session, mapped_column, with_loader_criteria
 
 current_tenant: ContextVar[int | None] = ContextVar("current_tenant", default=None)
 current_superadmin: ContextVar[bool] = ContextVar("current_superadmin", default=False)
@@ -55,3 +55,34 @@ def _fill_tenant_on_init(target: TenantMixin, args: Any, kwargs: Any) -> None:
             raise RuntimeError("超管写入租户资源必须显式指定 tenant_id")
         raise RuntimeError("写入租户资源缺少租户上下文（NFR-5 fail-closed）")
     target.__dict__["tenant_id"] = tenant_id
+
+
+def _tenant_subclasses(cls: type) -> list[type]:
+    subs: list[type] = []
+    for sub in cls.__subclasses__():
+        if not getattr(sub, "__abstract__", False) and not getattr(sub, "__platform_data_shared__", False):
+            subs.append(sub)
+        subs.extend(_tenant_subclasses(sub))
+    return subs
+
+
+@event.listens_for(Session, "do_orm_execute")
+def _inject_tenant_criteria(execute_state: Any) -> None:
+    """读/改/删全自动注入（11b）：SELECT=with_loader_criteria（含关系）；
+    ORM DML（update/delete）=对目标表显式追加 WHERE。超管/无上下文/共享读模型放行。"""
+    tid = current_tenant.get()
+    if tid is None or current_superadmin.get():
+        return
+    stmt = execute_state.statement
+    if execute_state.is_select:
+        for model in _tenant_subclasses(TenantMixin):
+            stmt = stmt.options(with_loader_criteria(model, model.tenant_id == tid, include_aliases=True))
+    elif execute_state.is_update or execute_state.is_delete:
+        table_name = getattr(getattr(stmt, "table", None), "name", None)
+        for model in _tenant_subclasses(TenantMixin):
+            if table_name is not None and getattr(model, "__tablename__", None) == table_name:
+                stmt = stmt.where(model.tenant_id == tid)
+                break
+    else:
+        return
+    execute_state.statement = stmt
