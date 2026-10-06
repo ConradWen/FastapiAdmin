@@ -9,6 +9,7 @@ from pathlib import Path
 
 from app.modules.metastella_semantics import (
     compute_package_fingerprint,
+    generate_ddl_statements,
     generate_migration,
     load_model_family,
 )
@@ -46,6 +47,13 @@ def test_migration_body_creates_tables() -> None:
     assert "DROP TABLE IF EXISTS t_book" in source  # downgrade 面
 
 
+def test_downgrade_covers_dictionary_tables() -> None:
+    """B-C3/工单12：upgrade 建了字典两表，downgrade 必须对称删掉（否则重放 CREATE 撞残留）。"""
+    source = generate_migration(_load())
+    assert "DROP TABLE IF EXISTS t_dict_type CASCADE" in source
+    assert "DROP TABLE IF EXISTS t_dict_data CASCADE" in source
+
+
 # ---- 阶段审计 B-C1：迁移脚本防注入（语义包是不可信输入）----
 
 
@@ -77,8 +85,11 @@ def test_hostile_default_value_cannot_escape_into_python() -> None:
     assert "os" not in ns and "sys" not in ns, "注入语句逃逸成了顶层代码"
 
     op = _run_upgrade(script)
-    assert len(op.executed) == 3, f"语句数应为 3 张表，实到 {len(op.executed)}（; 切碎或注入）"
-    assert all(s.lstrip().startswith("CREATE TABLE") for s in op.executed)
+    expected = len(generate_ddl_statements(family))
+    assert len(op.executed) == expected, f"语句数应={expected}，实到 {len(op.executed)}"
+    assert all(
+        s.lstrip().startswith(("CREATE TABLE", "INSERT INTO", "ALTER TABLE")) for s in op.executed
+    ), "每条都应是被 repr 安全包裹的 DDL 语句"
     assert any("PWNED" in s for s in op.executed), "敌意值应作为 DEFAULT 数据原样保留"
 
 
@@ -86,5 +97,5 @@ def test_semicolon_in_default_keeps_statement_count() -> None:
     family = _load()
     family["OBJECT"]["aggregates"][0]["attributes"][1]["defaultValue"] = "a;b;DROP TABLE x"
     op = _run_upgrade(generate_migration(family))
-    assert len(op.executed) == 3
+    assert len(op.executed) == len(generate_ddl_statements(family))
     assert any("a;b;DROP TABLE x" in s for s in op.executed)

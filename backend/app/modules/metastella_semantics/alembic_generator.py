@@ -12,16 +12,25 @@ from __future__ import annotations
 
 from typing import Any
 
-from .ddl_generator import _table_name, generate_ddl_statements
+from .ddl_generator import generate_ddl_statements
 from .publish import compute_package_fingerprint
+
+
+def _created_tables(statements: list[str]) -> list[str]:
+    """从 CREATE TABLE 语句按创建顺序提取表名（downgrade 逆序删，保证与 upgrade 对称，字典表不漏删）。"""
+    out: list[str] = []
+    for stmt in statements:
+        head = stmt.lstrip().splitlines()[0]
+        if head.startswith("CREATE TABLE "):
+            out.append(head[len("CREATE TABLE ") :].split(" ")[0].rstrip("(").strip())
+    return out
 
 
 def generate_migration(family: dict[str, Any]) -> str:
     """由语义包族确定性生成 Alembic revision 脚本文本（同内容必同输出）。"""
     fingerprint = compute_package_fingerprint(family)
     statements = generate_ddl_statements(family)
-    m1 = family.get("OBJECT", {})
-    tables = [_table_name(str(a.get("alias", ""))) for a in sorted(m1.get("aggregates", []), key=lambda a: a.get("alias", ""))]
+    tables = _created_tables(statements)
 
     body = "\n".join(f"    op.execute({stmt!r})" for stmt in statements)
     drops = "\n".join(f'    op.execute("DROP TABLE IF EXISTS {t} CASCADE")' for t in reversed(tables))

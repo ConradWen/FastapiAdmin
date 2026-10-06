@@ -6,7 +6,7 @@
 
 from .alembic_generator import generate_migration
 from .app_generator import generate_app_bundle
-from .ddl_generator import generate_ddl
+from .ddl_generator import generate_ddl, generate_ddl_statements
 from .errors import (
     BadSchemaVersionError,
     MissingSchemaVersionError,
@@ -31,6 +31,7 @@ __all__ = [
     "compute_package_fingerprint",
     "publish_package",
     "generate_ddl",
+    "generate_ddl_statements",
     "generate_migration",
     "generate_app_bundle",
     "endpoint_from_behavior_id",
