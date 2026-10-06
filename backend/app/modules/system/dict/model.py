@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.base_model import ModelMixin
@@ -9,11 +9,14 @@ class DictTypeModel(ModelMixin, TenantMixin):
     """字典类型表（平台共享读：ORM 层跳过租户过滤，CRUD 层处理 tenant OR 默认租户）"""
 
     __tablename__: str = "sys_dict_type"
-    __table_args__: dict[str, str] = {"comment": "字典类型表"}
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "dict_type", name="uq_sys_dict_type_tenant_type"),
+        {"comment": "字典类型表"},
+    )
     __platform_data_shared__ = True
 
     dict_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True, comment="字典名称")
-    dict_type: Mapped[str] = mapped_column(String(255), nullable=False, index=True, unique=True, comment="字典类型")
+    dict_type: Mapped[str] = mapped_column(String(255), nullable=False, index=True, comment="字典类型")
     status: Mapped[int] = mapped_column(Integer, default=0, nullable=False, comment="状态(0:启动 1:停用)")
     description: Mapped[str | None] = mapped_column(Text, default=None, nullable=True, comment="备注")
     dict_data_list: Mapped[list["DictDataModel"]] = relationship("DictDataModel", back_populates="dict_type_obj")
@@ -23,7 +26,10 @@ class DictDataModel(ModelMixin, TenantMixin):
     """字典数据表（平台共享读，同 DictTypeModel）"""
 
     __tablename__: str = "sys_dict_data"
-    __table_args__: dict[str, str] = {"comment": "字典数据表"}
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "dict_type_id", "dict_value", name="uq_sys_dict_data_tenant_type_value"),
+        {"comment": "字典数据表"},
+    )
     __platform_data_shared__ = True
 
     status: Mapped[int] = mapped_column(Integer, default=0, nullable=False, index=True, comment="状态(0:启动 1:停用)")

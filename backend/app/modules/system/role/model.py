@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.base_model import MappedBase, ModelMixin, UserMixin
@@ -63,10 +63,13 @@ class RoleModel(ModelMixin, UserMixin, TenantMixin):
     """角色模型"""
 
     __tablename__: str = "sys_role"
-    __table_args__: dict[str, str] = {"comment": "角色表"}
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_sys_role_tenant_code"),
+        {"comment": "角色表"},
+    )
 
     name: Mapped[str] = mapped_column(String(64), nullable=False, index=True, comment="角色名称")
-    code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, comment="角色编码")
+    code: Mapped[str] = mapped_column(String(64), nullable=False, comment="角色编码")
     order: Mapped[int] = mapped_column(Integer, nullable=False, default=999, comment="显示排序")
     status: Mapped[int] = mapped_column(Integer, default=0, nullable=False, comment="状态(0:启动 1:停用)")
     description: Mapped[str | None] = mapped_column(Text, default=None, nullable=True, comment="备注")

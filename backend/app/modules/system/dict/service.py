@@ -111,7 +111,7 @@ class DictTypeService:
         返回:
         - DictTypeOutSchema: 字典类型响应模型
         """
-        exist_obj = await DictTypeCRUD(self.auth, self.db).get(dict_name=data.dict_name)
+        exist_obj = await DictTypeCRUD(self.auth, self.db).get(dict_name=data.dict_name, tenant_id=self.auth.tenant_id)
         if exist_obj:
             raise CustomException(msg="创建失败，该数据已存在")
         obj = await DictTypeCRUD(self.auth, self.db).create(data=data)
@@ -400,7 +400,7 @@ class DictDataService:
         - redis (Redis): Redis 客户端
         - dict_type (str): 字典类型
         """
-        redis_key = f"{RedisInitKeyConfig.SYSTEM_DICT.key}:1:{dict_type}"
+        redis_key = _dict_cache_key(dict_type)
         dict_data_list = await DictDataCRUD(self.auth, self.db).get_list(search={"dict_type": dict_type})
         dict_data = [DictDataOutSchema.model_validate(row).model_dump(mode="json") for row in dict_data_list if row]
         value = json.dumps(dict_data, ensure_ascii=False)
@@ -417,12 +417,16 @@ class DictDataService:
         - DictDataOutSchema: 字典数据响应模型
         """
         # 检查相同字典类型下dict_label是否已存在
-        exist_label_obj = await DictDataCRUD(self.auth, self.db).get(dict_type=data.dict_type, dict_label=data.dict_label)
+        exist_label_obj = await DictDataCRUD(self.auth, self.db).get(
+            dict_type=data.dict_type, dict_label=data.dict_label, tenant_id=self.auth.tenant_id
+        )
         if exist_label_obj:
             raise CustomException(msg=f'创建失败，该字典类型下的字典标签"{data.dict_label}"已存在')
 
         # 检查相同字典类型下dict_value是否已存在
-        exist_value_obj = await DictDataCRUD(self.auth, self.db).get(dict_type=data.dict_type, dict_value=data.dict_value)
+        exist_value_obj = await DictDataCRUD(self.auth, self.db).get(
+            dict_type=data.dict_type, dict_value=data.dict_value, tenant_id=self.auth.tenant_id
+        )
         if exist_value_obj:
             raise CustomException(msg=f'创建失败，该字典类型下的字典键值"{data.dict_value}"已存在')
 
@@ -457,13 +461,17 @@ class DictDataService:
 
         # 检查相同字典类型下dict_label是否已存在（排除当前记录）
         if exist_obj.dict_label != data.dict_label:
-            exist_label_obj = await DictDataCRUD(self.auth, self.db).get(dict_type=data.dict_type, dict_label=data.dict_label)
+            exist_label_obj = await DictDataCRUD(self.auth, self.db).get(
+                dict_type=data.dict_type, dict_label=data.dict_label, tenant_id=self.auth.tenant_id
+            )
             if exist_label_obj:
                 raise CustomException(msg=f'更新失败，该字典类型下的字典标签"{data.dict_label}"已存在')
 
         # 检查相同字典类型下dict_value是否已存在（排除当前记录）
         if exist_obj.dict_value != data.dict_value:
-            exist_value_obj = await DictDataCRUD(self.auth, self.db).get(dict_type=data.dict_type, dict_value=data.dict_value)
+            exist_value_obj = await DictDataCRUD(self.auth, self.db).get(
+                dict_type=data.dict_type, dict_value=data.dict_value, tenant_id=self.auth.tenant_id
+            )
             if exist_value_obj:
                 raise CustomException(msg=f'更新失败，该字典类型下的字典键值"{data.dict_value}"已存在')
 
