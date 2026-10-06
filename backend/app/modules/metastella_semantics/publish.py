@@ -14,7 +14,7 @@ from .errors import (
     SemanticSchemaError,
 )
 from .family_checks import check_family
-from .publish_ledger import is_published, record_publish
+from .publish_ledger import is_published, record_publish, version_conflict
 from .registry import MINIMAL_SET
 from .validator import validate_model
 
@@ -89,6 +89,7 @@ def publish_package(
         raise ModelStructureError("发布前族内 schema_version 必须一致且存在（D11.01）")
 
     fingerprint = compute_package_fingerprint(family)
+    schema_version = _family_version(family)
     if ledger_conn is not None and is_published(ledger_conn, package_name, fingerprint):
         raise ModelPackageAlreadyPublishedError(
             f"语义包 {package_name} 指纹 {fingerprint} 已在台账发布（F-3 持久不可变）"
@@ -99,10 +100,24 @@ def publish_package(
             f"语义包 {package_name} 指纹 {fingerprint} 已发布于 "
             f"{existing['published_at']}（F-3 内容不可变——重发布须出新 schema_version）"
         )
+    # D11.06/B-I6：同 (包, 版本) 已有不同内容 → 拒（版本须单调，杜绝同版本静默覆盖历史）。
+    if ledger_conn is not None:
+        prior = version_conflict(ledger_conn, package_name, schema_version, fingerprint)
+        if prior is not None:
+            raise ModelPackageAlreadyPublishedError(
+                f"语义包 {package_name} 版本 {schema_version} 已发布过不同内容（旧指纹 {prior[:12]}）"
+                "——请递增 schema_version（D11.03/06）"
+            )
+    for (pkg, prior_fp), rec in _REGISTRY.items():
+        if pkg == package_name and prior_fp != fingerprint and rec["schema_version"] == schema_version:
+            raise ModelPackageAlreadyPublishedError(
+                f"语义包 {package_name} 版本 {schema_version} 已发布过不同内容（旧指纹 {rec['fingerprint'][:12]}）"
+                "——请递增 schema_version（D11.03/06）"
+            )
 
     record: dict[str, Any] = {
         "package_name": package_name,
-        "schema_version": _family_version(family),
+        "schema_version": schema_version,
         "fingerprint": fingerprint,
         "status": "PUBLISHED",
         "published_at": datetime.now(UTC).isoformat(),

@@ -75,10 +75,14 @@ def test_publish_is_immutable_same_fingerprint_rejected() -> None:
 
 
 def test_new_content_republish_allowed_after_publish(tmp_path: Path) -> None:
-    """内容变化→新指纹可再发布（F-3 不可变指同指纹，非同包名永久锁死）。"""
+    """内容变化→须**递增版本**才可再发布（F-3 同指纹不可变；D11.03/06 同版本换内容须拒）。"""
     family = _load()
     publish_package(family, package_name="library_smoke")
     family["OBJECT"]["domain"] = "图书管理（增补）"
+    with pytest.raises(ModelPackageAlreadyPublishedError, match="版本"):
+        publish_package(family, package_name="library_smoke")
+    for doc in family.values():
+        doc["schema_version"] = "1.1.0"
     record2 = publish_package(family, package_name="library_smoke")
     assert record2["status"] == "PUBLISHED"
     assert record2["fingerprint"] != compute_package_fingerprint(_load())

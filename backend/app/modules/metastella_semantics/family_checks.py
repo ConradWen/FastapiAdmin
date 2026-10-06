@@ -22,7 +22,16 @@ _SECRET_PATTERNS = (
     re.compile(r"(?i)(password|passwd|pwd)\s*[:=]\s*(?!<|\{\{|占位|placeholder)\S+"),
     re.compile(r"\bsk-[A-Za-z0-9_-]{12,}"),
     re.compile(r"\bAKIA[0-9A-Z]{16}"),
+    re.compile(r"\b(ghp|gho|xoxb|xoxp)-[A-Za-z0-9]{16,}"),
+    re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{6,}"),  # JWT
 )
+# 敏感键名（值为字面量即疑密钥；占位符形态豁免）
+_SENSITIVE_KEY_RE = re.compile(r"(?i)^(api[_-]?key|secret[_-]?key|access[_-]?key|private[_-]?key|password|passwd|pwd|token)$")
+_PLACEHOLDER_RE = re.compile(r"(^\s*(<[^>]*>|\{\{.*\}\}|\$\{[^}]*\}|待填|占位.*|placeholder.*|your[_-].*)\s*$)", re.I)
+
+
+def _looks_like_secret_value(value: str) -> bool:
+    return bool(value.strip()) and not _PLACEHOLDER_RE.match(value) and len(value.strip()) >= 8
 
 
 @dataclass
@@ -378,19 +387,33 @@ def _check_expressions(family: Mapping[str, Any], result: FamilyCheckResult) -> 
 
 
 def _check_secrets(family: Mapping[str, Any], result: FamilyCheckResult) -> None:
+    seen: set[str] = set()
+
+    def flag(path: str, why: str) -> None:
+        if path not in seen:
+            seen.add(path)
+            result.errors.append(f"密钥零落盘：{path} {why}（安全架构 §1——镜像/模型内禁密钥）")
+
+    def scan_value(value: str, path: str) -> None:
+        for pattern in _SECRET_PATTERNS:
+            if pattern.search(value):
+                flag(path, "出现疑似密钥字面值")
+
     def walk(node: object, path: str) -> None:
         if isinstance(node, Mapping):
             for key, value in node.items():
+                kpath = f"{path}.{key}"
                 if isinstance(value, str):
-                    for pattern in _SECRET_PATTERNS:
-                        if pattern.search(value):
-                            result.errors.append(
-                                f"密钥零落盘：{path}.{key} 出现疑似密钥字面值（安全架构 §1——镜像/模型内禁密钥）"
-                            )
+                    scan_value(value, kpath)
+                    if _SENSITIVE_KEY_RE.match(str(key)) and _looks_like_secret_value(value):
+                        flag(kpath, f"敏感键 {key} 携带字面值")
                 else:
-                    walk(value, f"{path}.{key}")
+                    walk(value, kpath)
         elif isinstance(node, list | tuple):
             for i, item in enumerate(node):
-                walk(item, f"{path}[{i}]")
+                if isinstance(item, str):
+                    scan_value(item, f"{path}[{i}]")
+                else:
+                    walk(item, f"{path}[{i}]")
 
     walk(dict(family), "$")

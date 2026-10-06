@@ -62,3 +62,13 @@ def is_published(conn: Any, package_name: str, fingerprint: str) -> bool:
         (package_name, fingerprint),
     ).fetchone()
     return row is not None
+
+
+def version_conflict(conn: Any, package_name: str, schema_version: str, fingerprint: str) -> str | None:
+    """同 (包, 版本) 已有**不同**指纹 → 返回既有指纹（D11.03：换内容须递增版本，不得同版本覆盖）。"""
+    row = conn.execute(
+        f"SELECT fingerprint FROM {TABLE} "
+        "WHERE package_name = %s AND schema_version = %s AND fingerprint <> %s LIMIT 1",
+        (package_name, schema_version, fingerprint),
+    ).fetchone()
+    return str(row[0]) if row else None
