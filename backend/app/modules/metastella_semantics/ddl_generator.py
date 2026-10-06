@@ -27,6 +27,7 @@ _PG_TYPES: dict[str, str] = {
     "Date": "date",
     "DateTime": "timestamptz",
     "JSON": "jsonb",
+    "ValueObject": "jsonb",
     "Reference": "bigint",
     "Attachment": "text",
     "AggregateRootRef": "bigint",

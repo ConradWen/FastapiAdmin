@@ -52,6 +52,7 @@ def check_family(
     _check_references(family, result)
     _check_api_surface(family, result)
     _check_databinding(family, result)
+    _check_generation_gaps(family, result)
     _check_permissions(family, result)
     _check_roles(family, result)
     _check_flow(family, result)
@@ -300,13 +301,27 @@ def _check_flow(family: Mapping[str, Any], result: FamilyCheckResult) -> None:
 # ---- dataBinding 引用可解析（§8.7-1）+ io/required 对齐（D8.04） ----
 
 
+# D8.04 控件映射强制规则（只编在仓可证的映射：D8.04 明文三类 + 语料已符的 Date/DateTime；
+# v9 §8.3 全表为外部引用不在仓，String/Number 等无引用规则不硬造 → 不在表即不拦）。
+_CONTROL_FOR_SEM_TYPE: dict[str, set[str]] = {
+    "Enum": {"COMBO"},
+    "DictionaryRef": {"COMBO"},
+    "AggregateRootRef": {"POPUP_SELECT"},
+    "Boolean": {"CHECKBOX"},
+    "Date": {"DATEPICKER"},
+    "DateTime": {"DATEPICKER"},
+}
+
+
 def _check_databinding(family: Mapping[str, Any], result: FamilyCheckResult) -> None:
-    attrs: dict[str, dict[str, bool]] = {}  # alias -> {attr: required}
+    attrs: dict[str, dict[str, dict[str, Any]]] = {}  # alias -> {attr: {required, type}}
     for agg in family.get("OBJECT", {}).get("aggregates", []):
         if not isinstance(agg, dict):
             continue
         attrs[str(agg.get("alias"))] = {
-            str(a.get("name")): bool(a.get("required")) for a in agg.get("attributes", []) if isinstance(a, dict)
+            str(a.get("name")): {"required": bool(a.get("required")), "type": str(a.get("type"))}
+            for a in agg.get("attributes", [])
+            if isinstance(a, dict)
         }
 
     bound_required: set[tuple[str, str]] = set()
@@ -327,7 +342,8 @@ def _check_databinding(family: Mapping[str, Any], result: FamilyCheckResult) -> 
             if attr not in attrs[alias]:
                 result.errors.append(f"引用完整性：{eid} dataBinding={binding!r} 属性不存在（§8.7-1）")
                 continue
-            m1_required = attrs[alias][attr]
+            info = attrs[alias][attr]
+            m1_required = info["required"]
             elem_required = element.get("required") is True
             io = element.get("io")
             if elem_required and not m1_required:
@@ -340,13 +356,38 @@ def _check_databinding(family: Mapping[str, Any], result: FamilyCheckResult) -> 
                 )
             if m1_required and io in {"I", "I_O"}:
                 bound_required.add((alias, attr))
+            # D8.04 控件映射强制：语义类型 → 控件类型（仅在表的类型拦）
+            allowed_controls = _CONTROL_FOR_SEM_TYPE.get(info["type"])
+            if allowed_controls and element.get("type") not in allowed_controls:
+                result.errors.append(
+                    f"控件映射（D8.04）：{eid} dataBinding={binding} 语义类型 {info['type']} "
+                    f"须用 {sorted(allowed_controls)}，实为 {element.get('type')!r}"
+                )
 
     for alias, attr_map in attrs.items():
-        for attr, required in attr_map.items():
-            if required and (alias, attr) not in bound_required:
+        for attr, info in attr_map.items():
+            if info["required"] and (alias, attr) not in bound_required:
                 result.warnings.append(
                     f"dataBinding 缺口（§8.7-1）：M1 必填属性 {alias}.{attr} 未被任何输入元素绑定"
                 )
+
+
+# ---- 生成面缺口（B-I8）：DDL 生成器未物化子实体 → warning 留痕 ----
+
+
+def _check_generation_gaps(family: Mapping[str, Any], result: FamilyCheckResult) -> None:
+    for agg in family.get("OBJECT", {}).get("aggregates", []):
+        if not isinstance(agg, dict):
+            continue
+        alias = str(agg.get("alias"))
+        for entity in agg.get("entities", []) or []:
+            if not isinstance(entity, dict):
+                continue
+            ent_alias = str(entity.get("alias") or entity.get("name") or "?")
+            result.warnings.append(
+                f"生成面缺口（B-I8/D1.03）：聚合 {alias} 子实体 {ent_alias} 未物化为独立表"
+                "——当前 DDL 生成器只落聚合根表，子实体数据面待补"
+            )
 
 
 # ---- 表达式语体一致性（D3.01/D6.03，warning 级） ----
