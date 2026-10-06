@@ -66,6 +66,7 @@ def _check_references(family: Mapping[str, Any], result: FamilyCheckResult) -> N
     behaviors = [b for b in family.get("BEHAVIOR", {}).get("behaviors", []) if isinstance(b, dict)]
     behavior_ids = {b.get("id") for b in behaviors}
     rule_ids = {r.get("id") for r in family.get("RULE", {}).get("rules", []) if isinstance(r, dict)}
+    actor_codes = _iter_permission_codes(family)
 
     for b in behaviors:
         owner = b.get("ownerEntity")
@@ -74,6 +75,15 @@ def _check_references(family: Mapping[str, Any], result: FamilyCheckResult) -> N
         for ref in b.get("appliedRules", []) or []:
             if ref not in rule_ids:
                 result.errors.append(f"引用完整性：行为 {b.get('id')} appliedRules 引用不存在规则 {ref}（§12）")
+        for trigger in b.get("syncTriggers", []) or []:
+            if isinstance(trigger, dict) and trigger.get("ruleRef") and trigger["ruleRef"] not in rule_ids:
+                result.errors.append(
+                    f"引用完整性：行为 {b.get('id')} syncTriggers.ruleRef={trigger['ruleRef']} 不存在（v9 §3.2.2-2）"
+                )
+        for perm in b.get("requiredPermissions", []) or []:
+            code = perm.get("code") if isinstance(perm, dict) else perm
+            if not code:
+                result.errors.append(f"权限位：行为 {b.get('id')} requiredPermissions 项缺 code（D5.02）")
 
     for rule in family.get("RULE", {}).get("rules", []):
         if not isinstance(rule, dict):
@@ -105,6 +115,12 @@ def _check_references(family: Mapping[str, Any], result: FamilyCheckResult) -> N
                 result.errors.append(
                     f"引用完整性：操作点 {ap.get('id')} behaviorRef={ap.get('behaviorRef')} 不存在（§12）"
                 )
+            for pref in ap.get("permissionRef", []) or []:
+                code = pref.get("code") if isinstance(pref, dict) else pref
+                if code and code not in actor_codes:
+                    result.errors.append(
+                        f"引用完整性：操作点 {ap.get('id')} permissionRef={code} 不存在于 M5 权限集（v9 §8.2.5）"
+                    )
 
     # v9 §3.4-1 可追溯门禁：USER_ACTION 行为必须有界面入口（禁孤儿行为）
     for b in behaviors:

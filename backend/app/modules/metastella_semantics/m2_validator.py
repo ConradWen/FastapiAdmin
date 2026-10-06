@@ -41,9 +41,10 @@ def validate_behavior_model(doc: dict[str, Any]) -> None:
         by_id[bid] = b
         _require_string(b, "name", f"行为 {bid}")
 
+        # v9 §3.2.1：ownerEntity 必填（缺失曾静默绕过 D2.02 一致性——审计 B-I1）
+        owner = _require_string(b, "ownerEntity", f"行为 {bid}")
         # D2.02 一致性：id 的 {Entity} 段必须等于 ownerEntity
-        owner = b.get("ownerEntity")
-        if owner and bid.partition("_")[0] != owner:
+        if bid.partition("_")[0] != owner:
             raise ModelStructureError(
                 f"行为 {bid}: id 实体段与 ownerEntity={owner} 不一致——endpoint 推导歧义（D2.02）"
             )

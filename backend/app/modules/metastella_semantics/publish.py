@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import UTC, datetime
+from collections.abc import Mapping
+from datetime import UTC, date, datetime
 from typing import Any
 
 from .errors import (
@@ -14,17 +15,38 @@ from .errors import (
 )
 from .family_checks import check_family
 from .publish_ledger import is_published, record_publish
+from .registry import MINIMAL_SET
 from .validator import validate_model
 
 
-def canonical_json(obj: Any) -> str:
-    """canonical_json：键排序+紧凑分隔+UTF-8（D11.02 指纹的确定性序列化面）。
+def _tag_yaml_scalars(obj: Any) -> Any:
+    """把 YAML 原生标量（date/datetime）转成带类型标签的结构，保 canonical_json **单射**。
 
-    YAML 原生类型（date/datetime 等）经 default=str 规范化；键序比较失败等
-    不可序列化输入抛 SemanticSchemaError（error 级），不裸穿 TypeError。
+    否则 `date(2026,1,1)` 与字符串 `"2026-01-01"` 经 default=str 后同字节 → 同指纹，
+    F-3 会把语义不同的包误判"已发布"（阶段审计 B-I7）。
+    """
+    if isinstance(obj, Mapping):
+        return {k: _tag_yaml_scalars(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_tag_yaml_scalars(v) for v in obj]
+    if isinstance(obj, bool) or obj is None or isinstance(obj, str | int | float):
+        return obj
+    if isinstance(obj, datetime):
+        return {"__yaml__": "datetime", "value": obj.isoformat()}
+    if isinstance(obj, date):
+        return {"__yaml__": "date", "value": obj.isoformat()}
+    return obj
+
+
+def canonical_json(obj: Any) -> str:
+    """canonical_json：类型标签化 + 键排序 + 紧凑分隔 + UTF-8（D11.02 确定性序列化面）。
+
+    不可序列化输入（混合类型键等）抛 SemanticSchemaError（error 级），不裸穿 TypeError。
     """
     try:
-        return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+        return json.dumps(
+            _tag_yaml_scalars(obj), ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
+        )
     except TypeError as exc:
         raise SemanticSchemaError(f"语义包内容不可确定性序列化（D11.02）: {exc}") from exc
 
@@ -49,6 +71,11 @@ def publish_package(
     - schema_version 从族内容取（D11.01 族一致），不作调用方参数——杜绝台账失真。
     """
     pending: list[str] = []
+    missing = MINIMAL_SET - set(family)
+    if missing:
+        raise ModelStructureError(
+            f"族缺最小集成员（D13.01/§0.3 发布单元=语义包不可拆）：{sorted(missing)}"
+        )
     for model_type in sorted(family):
         try:
             validate_model(family[model_type])
